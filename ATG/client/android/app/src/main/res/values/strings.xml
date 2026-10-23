@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ATG Traders</string>
+    <string name="title_activity_main">ATG Traders</string>
+    <string name="package_name">com.atg.traders</string>
+    <string name="custom_url_scheme">com.atg.traders</string>
+</resources>

@@ -1,0 +1,16 @@
+{
+  "name": "atg-traders",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ATG Traders — full-stack trading education & signals platform",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "db:setup": "cd server && npm run prisma:generate && npm run prisma:push && npm run seed",
+    "test": "cd server && npm test",
+    "build": "cd client && npm run build && cd ../server && npm run build",
+    "start": "cd server && npm run start",
+    "start:pm2": "pm2 start ecosystem.config.cjs --env production"
+  }
+}

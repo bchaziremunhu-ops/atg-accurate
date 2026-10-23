@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/dist
+client/android
+client/ios
+client/.gradle
+server/pgdata
+server/.env
+server/.env.*
+!server/.env.example

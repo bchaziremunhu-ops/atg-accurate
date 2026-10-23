@@ -1,0 +1,826 @@
+// ATG Traders - Prisma schema. MySQL is the only application database.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  // Primary login identifier for traders (digits only; null for the admin).
+  phone        String?   @unique
+  passwordHash String
+  name         String
+  role         String    @default("USER") // USER | ADMIN
+  membership   String    @default("FREE") // FREE | PAID | VIP_DERIV | VIP_WELTRADE
+  avatarUrl    String?   @db.Text
+  bio          String?   @db.LongText
+  country      String?
+  isVip        Boolean   @default(false)
+  vipExpiresAt DateTime?
+
+  // ---- Registration profile + account recovery ----------------------------
+  // Canonical international number (`+263771234567`). `phone` above keeps the
+  // legacy digits-only form so existing accounts still resolve; uniqueness is
+  // enforced on both columns (checked together in the registration route).
+  phoneE164           String?   @unique
+  nationality         String?
+  dateOfBirth         DateTime?
+  address             String?   @db.Text
+  // Security question is stored by id (see lib/securityQuestions.ts); only a
+  // scrypt hash of the answer is kept — never the answer itself.
+  securityQuestion    String?
+  securityAnswerHash  String?
+  termsAcceptedAt     DateTime?
+  privacyAcceptedAt   DateTime?
+  // Failed account-recovery attempts, used for temporary lockouts.
+  recoveryAttempts    Int       @default(0)
+  recoveryLockedUntil DateTime?
+
+  // Session store for refresh-token rotation / revocation (hashes only —
+  // the raw token is never stored server-side).
+  refreshTokenHash      String?
+  refreshTokenPrevHash  String?
+  refreshTokenExpiresAt DateTime?
+  refreshTokenRotatedAt DateTime?
+  refreshTokenRevokedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet        Wallet?
+  signals       Signal[]           @relation("SignalAuthor")
+  enrollments   Enrollment[]
+  purchases     Purchase[]
+  transactions  Transaction[]
+  subscription  Subscription?
+  pushSubs      PushSubscription[]
+  notifications Notification[]
+  groupPosts    GroupPost[]
+  messages      Message[]
+  likes         PostLike[]
+  comments      Comment[]
+  createdGroups Group[]            @relation("GroupOwner")
+  memberships   GroupMember[]
+  watchlist     WatchlistItem[]
+  certificates  Certificate[]
+
+  brokerTransactions    BrokerTransaction[]
+  brokerBalances        BrokerBalance[]
+  brokerAccounts        BrokerAccount[]
+  securityEvents        SecurityEvent[]
+  receipts              Receipt[]
+  refunds               Refund[]
+  purchaseRequests      PurchaseRequest[]      @relation("PurchaseRequestOwner")
+  reviewedRequests      PurchaseRequest[]      @relation("PurchaseRequestReviewer")
+  purchaseRequestEvents PurchaseRequestEvent[] @relation("PurchaseRequestEventActor")
+  membershipRoomAccess  MembershipRoomAccess[]
+}
+
+// Append-only audit trail for authentication and account-recovery activity.
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  // Attempted / owned number in E.164. Kept separately from `userId` so
+  // failed attempts against an unknown number can still be audited.
+  phoneE164 String?
+  type      String // REGISTER | LOGIN_* | RECOVERY_* | PASSWORD_*
+  ip        String?
+  userAgent String?  @db.Text
+  meta      String?  @db.LongText // JSON, never secrets
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([phoneE164, createdAt])
+  @@index([type, createdAt])
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance   Float    @default(0)
+  currency  String   @default("USD")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Signal {
+  id          String    @id @default(cuid())
+  pair        String // e.g. Volatility 75 (V75)
+  market      String    @default("Derived")
+  direction   String // BUY | SELL
+  entry       Float
+  takeProfit  Float
+  stopLoss    Float
+  timeframe   String    @default("15m")
+  tier        String    @default("FREE") // FREE | VIP (legacy mirror of audience)
+  audience    String    @default("FREE") // FREE | PAID | VIP_DERIV | VIP_WELTRADE
+  status      String    @default("OPEN") // OPEN | HIT_TP | HIT_SL | CANCELLED
+  resultPips  Float?
+  resultPct   Float?
+  analysis    String?   @db.LongText
+  chartUrl    String?   @db.Text
+  roomPostId  String? // mirrored GroupPost in the matching room (auto-managed)
+  publishedAt DateTime  @default(now())
+  closedAt    DateTime?
+  authorId    String?
+  author      User?     @relation("SignalAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tier, status])
+  @@index([pair])
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  description String?  @db.LongText
+  level       String   @default("Beginner") // Beginner | Intermediate | Advanced
+  price       Float    @default(0)
+  currency    String   @default("USD")
+  saleStatus  String   @default("AVAILABLE") // AVAILABLE | UNAVAILABLE | HIDDEN | SOLD_OUT
+  isVip       Boolean  @default(false)
+  coverUrl    String?  @db.Text
+  durationMin Int      @default(0)
+  published   Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons          Lesson[]
+  resources        Resource[]
+  enrollments      Enrollment[]
+  purchaseRequests PurchaseRequest[]
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?  @db.LongText
+  videoUrl    String?  @db.Text
+  durationMin Int      @default(0)
+  order       Int      @default(0)
+  isFree      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  progress LessonProgress[]
+}
+
+model Resource {
+  id        String   @id @default(cuid())
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  title     String
+  type      String   @default("PDF") // PDF | EBOOK | SHEET
+  url       String   @db.Text
+  sizeKb    Int      @default(0)
+  isVip     Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress   Int      @default(0) // 0-100
+  completed  Boolean  @default(false)
+  enrolledAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, courseId])
+}
+
+model LessonProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  completed   Boolean  @default(false)
+  secondsSeen Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+}
+
+model Purchase {
+  id                     String    @id @default(cuid())
+  userId                 String
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemType               String // COURSE | RESOURCE | SUBSCRIPTION
+  itemId                 String
+  itemTitle              String
+  amount                 Float
+  currency               String    @default("USD")
+  status                 String    @default("PENDING") // PENDING | PROCESSING | PAID | FAILED | REFUNDED | DISPUTED
+  provider               String    @default("stripe") // stripe | manual | free
+  providerRef            String? // merchant reference (ATG-...) or Stripe session id
+  method                 String? // payment method chosen for manual/local payments
+  proofNote              String?   @db.LongText // reference / details submitted by the buyer
+  providerPollUrl        String?   @map("paynowPollUrl") @db.Text
+  providerTransactionRef String?   @map("paynowReference")
+  verifiedById           String?
+  verifiedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  payment         Payment?
+  receipt         Receipt?
+  refunds         Refund[]
+  purchaseRequest PurchaseRequest?
+
+  @@index([userId, status])
+}
+
+model MembershipPackage {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  title          String
+  description    String?  @db.LongText
+  price          Decimal  @db.Decimal(12, 2)
+  currency       String   @default("USD")
+  durationDays   Int
+  activationRule String   @default("APPROVAL") // APPROVAL | AFTER_CURRENT_ACCESS
+  includedRooms  String   @db.Text // JSON: VIP_DERIV and/or VIP_WELTRADE
+  saleStatus     String   @default("AVAILABLE") // AVAILABLE | UNAVAILABLE | HIDDEN | SOLD_OUT
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  purchaseRequests PurchaseRequest[]
+
+  @@index([saleStatus])
+}
+
+model PurchaseRequest {
+  id                      String             @id @default(cuid())
+  reference               String             @unique
+  userId                  String
+  user                    User               @relation("PurchaseRequestOwner", fields: [userId], references: [id], onDelete: Cascade)
+  reviewerId              String?
+  reviewer                User?              @relation("PurchaseRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  itemType                String // COURSE | MEMBERSHIP
+  courseId                String?
+  course                  Course?            @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  membershipPackageId     String?
+  membershipPackage       MembershipPackage? @relation(fields: [membershipPackageId], references: [id], onDelete: SetNull)
+  itemTitleSnapshot       String
+  itemDescriptionSnapshot String?            @db.LongText
+  amountSnapshot          Decimal            @db.Decimal(12, 2)
+  currencySnapshot        String
+  durationDaysSnapshot    Int?
+  activationRuleSnapshot  String?
+  includedRoomsSnapshot   String?            @db.Text
+  amountPaid              Decimal            @db.Decimal(12, 2)
+  paymentMethod           String
+  paymentReference        String
+  paymentDate             DateTime?
+  proofStorageName        String
+  proofMimeType           String
+  proofSizeBytes          Int
+  customerNote            String?            @db.Text
+  status                  String             @default("SUBMITTED") // SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | CANCELLED
+  duplicateReference      Boolean            @default(false)
+  decisionAt              DateTime?
+  decisionReason          String?            @db.Text
+  customerMessage         String?            @db.Text
+  internalNotes           String?            @db.LongText
+  approvalReference       String?            @unique
+  purchaseId              String?            @unique
+  purchase                Purchase?          @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  events                PurchaseRequestEvent[]
+  membershipAccess      MembershipRoomAccess[]
+  paymentReferenceClaim PaymentReferenceClaim?
+
+  @@index([userId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([paymentReference])
+}
+
+model PurchaseRequestEvent {
+  id              String          @id @default(cuid())
+  requestId       String
+  request         PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actorId         String?
+  actor           User?           @relation("PurchaseRequestEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action          String
+  fromStatus      String?
+  toStatus        String?
+  reason          String?         @db.Text
+  customerMessage String?         @db.Text
+  internalNotes   String?         @db.Text
+  details         String?         @db.LongText
+  createdAt       DateTime        @default(now())
+
+  @@index([requestId, createdAt])
+}
+
+model MembershipRoomAccess {
+  id                String                             @id @default(cuid())
+  userId            String
+  user              User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId         String
+  request           PurchaseRequest                    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  accessLevel       String // VIP_DERIV | VIP_WELTRADE
+  startsAt          DateTime
+  expiresAt         DateTime
+  approvalReference String
+  createdAt         DateTime                           @default(now())
+  expiryNotices     MembershipRoomAccessExpiryNotice[]
+
+  @@unique([requestId, accessLevel])
+  @@index([userId, accessLevel, expiresAt])
+}
+
+model MembershipRoomAccessExpiryNotice {
+  id                     String               @id @default(cuid())
+  membershipRoomAccessId String
+  membershipRoomAccess   MembershipRoomAccess @relation(fields: [membershipRoomAccessId], references: [id], onDelete: Cascade)
+  milestone              String // THREE_DAYS | ONE_DAY | EXPIRED
+  createdAt              DateTime             @default(now())
+
+  @@unique([membershipRoomAccessId, milestone])
+  @@index([createdAt])
+}
+
+model PaymentReferenceClaim {
+  reference String          @id
+  requestId String          @unique
+  request   PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan        String   @default("VIP_MONTHLY")
+  status      String   @default("ACTIVE") // ACTIVE | EXPIRED | CANCELLED | PENDING
+  startedAt   DateTime @default(now())
+  expiresAt   DateTime
+  autoRenew   Boolean  @default(true)
+  provider    String   @default("stripe")
+  providerRef String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Transaction {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String // DEPOSIT | WITHDRAWAL | PURCHASE | REFUND | SUBSCRIPTION
+  method         String? // BANK_TRANSFER | ECOCASH | ONEMONEY | USDT_TRC20 | CARD
+  amount         Float
+  fee            Float     @default(0)
+  netAmount      Float?
+  currency       String    @default("USD")
+  status         String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED
+  reference      String    @unique
+  idempotencyKey String?   @unique
+  note           String?   @db.LongText
+  destination    String?   @db.Text
+  providerRef    String?
+  adminNote      String?   @db.LongText
+  processedById  String?
+  processedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  statusHistory TransactionStatusHistory[]
+
+  @@index([userId, status])
+}
+
+model TransactionStatusHistory {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  fromStatus    String?
+  toStatus      String
+  actorId       String?
+  actorRole     String
+  note          String?
+  createdAt     DateTime    @default(now())
+
+  @@index([transactionId, createdAt])
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?  @db.LongText
+  category    String   @default("General") // Analysis | Wins | Questions | General
+  visibility  String   @default("PUBLIC") // PUBLIC | VIP (legacy)
+  accessTier  String   @default("FREE") // FREE | PAID | VIP_DERIV | VIP_WELTRADE
+  roomType    String   @default("GENERAL") // GENERAL | DERIV | WELTRADE
+  isChatOpen  Boolean  @default(true)
+  ownerId     String?
+  owner       User?    @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  members  GroupMember[]
+  posts    GroupPost[]
+  messages Message[]
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String   @default("MEMBER") // MEMBER | MODERATOR
+  joinedAt DateTime @default(now())
+
+  @@unique([groupId, userId])
+}
+
+model GroupPost {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  kind      String   @default("POST") // POST | ANALYSIS | WIN | QUESTION
+  body      String   @db.LongText
+  imageUrl  String?  @db.Text
+  createdAt DateTime @default(now())
+
+  likes    PostLike[]
+  comments Comment[]
+
+  @@index([groupId, createdAt])
+}
+
+model PostLike {
+  id     String    @id @default(cuid())
+  postId String
+  post   GroupPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+}
+
+model Comment {
+  id        String    @id @default(cuid())
+  postId    String
+  post      GroupPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String    @db.LongText
+  createdAt DateTime  @default(now())
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String   @db.LongText
+  createdAt DateTime @default(now())
+
+  @@index([groupId, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String   @db.LongText
+  type      String   @default("SYSTEM") // SIGNAL | SUBSCRIPTION | SYSTEM | EDUCATION | PAYMENT
+  read      Boolean  @default(false)
+  link      String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique @db.VarChar(700)
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pair      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, pair])
+}
+
+model Certificate {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId String
+  title    String   @default("")
+  issuedAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Broker funding (deposits INTO / withdrawals OUT OF a Deriv or Weltrade
+// account).  Deliberately a separate ledger from Wallet/Transaction: money that
+// funds a broker account is never the same money as a course/VIP purchase.
+// ---------------------------------------------------------------------------
+
+model BrokerTransaction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  direction String // DEPOSIT | WITHDRAWAL
+  broker    String // DERIV | WELTRADE
+  amount    Float
+  currency  String @default("USD")
+  method    String // ECOCASH | ONEMONEY | INNBUCKS | CASHSMILE | BANK_TRANSFER
+
+  // Admin fee snapshotted at creation time (deposits only). Stored per row so
+  // later settings changes never rewrite history.
+  feePct    Float @default(0)
+  feeAmount Float @default(0)
+
+  status String @default("PENDING")
+  // PENDING | UNDER_REVIEW | APPROVED | PROCESSING | COMPLETED | REJECTED | FAILED
+
+  reference      String @unique // ATG-BD-xxxx / ATG-BW-xxxx (shown to the customer)
+  idempotencyKey String @unique // client-supplied or server-generated; blocks double submits
+
+  // Reference details supplied by the customer (e.g. EcoCash txn id, wallet no.)
+  paymentReference  String?
+  // Withdrawal destination — masked copy kept for list views (sensitive data).
+  destination       String? @db.Text
+  destinationMasked String? @db.Text
+  destinationType   String? // MOBILE_WALLET | BANK_ACCOUNT | BROKER_ACCOUNT
+
+  provider     String  @default("manual") // manual | deriv | weltrade
+  providerRef  String? // reference returned by the payment provider / broker
+  evidence     String? @db.LongText // proof the money actually moved (webhook id, stmt line)
+  evidenceType String? // PROVIDER_WEBHOOK | MANUAL_RECONCILIATION
+
+  adminNote     String? @db.LongText // visible note returned to the customer
+  internalNote  String? @db.LongText // staff-only note, never returned to the customer
+  failureReason String? @db.LongText
+
+  processedById String?
+  processedAt   DateTime?
+  completedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  audit BrokerAuditLog[]
+
+  @@index([userId, createdAt])
+  @@index([broker, direction, status])
+  @@index([status, createdAt])
+}
+
+// Immutable financial audit trail. Rows are only ever inserted — never updated
+// or deleted. `provider`+`eventId` makes replayed webhooks idempotent.
+model BrokerAuditLog {
+  id            String             @id @default(cuid())
+  transactionId String?
+  transaction   BrokerTransaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  action     String // CREATED | REVIEW | APPROVE | START_PROCESSING | COMPLETE | REJECT | FAIL | NOTE | WEBHOOK | BALANCE_SYNC
+  fromStatus String?
+  toStatus   String?
+  source     String  @default("ADMIN") // CUSTOMER | ADMIN | PROVIDER | SYSTEM
+  provider   String?
+  eventId    String? // external idempotency key for provider events
+
+  actorId   String?
+  actorRole String? // USER | ADMIN | SYSTEM
+  actorName String?
+
+  note     String? @db.LongText
+  metadata String? @db.LongText // JSON blob (amounts, provider refs, raw event summary)
+
+  createdAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+  @@index([transactionId, createdAt])
+  @@index([action, createdAt])
+}
+
+// Verified broker-account balances. A row is only ever shown to the customer
+// once `verifiedAt` is set (provider callback or an admin reconciliation).
+model BrokerBalance {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broker       String // DERIV | WELTRADE
+  currency     String    @default("USD")
+  balance      Float
+  source       String    @default("MANUAL") // PROVIDER_API | MANUAL_RECONCILIATION
+  reference    String?
+  verifiedById String?
+  verifiedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([userId, broker, currency])
+  @@index([broker, verifiedAt])
+}
+
+// Key/value store for runtime-configurable behaviour (broker limits, fees, ...).
+// Values are JSON strings; the schema for each key lives in lib/settings.ts.
+// Env vars provide the defaults; anything stored here overrides them.
+model Setting {
+  key         String   @id
+  value       String   @db.LongText
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Purchase records and audit data are separate from broker-funding
+// transactions: they represent courses, resources and memberships.
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id         String   @id @default(cuid())
+  purchaseId String   @unique
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  userId     String
+
+  // Merchant reference we generated (matches Purchase.providerRef).
+  reference              String  @unique
+  providerTransactionRef String? @unique @map("paynowReference")
+  providerPollUrl        String? @map("pollUrl") @db.Text
+
+  // CREATED | SENT | AWAITING_PAYMENT | PAID | FAILED | CANCELLED | DISPUTED | REFUNDED
+  status   String  @default("CREATED")
+  amount   Decimal @db.Decimal(12, 2)
+  currency String  @default("USD")
+
+  statusUpdates   Int       @default(0)
+  firstNotifiedAt DateTime?
+  paidAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events PaymentEvent[]
+
+  @@index([status])
+  @@index([userId])
+}
+
+// Append-only trail of provider status events.
+model PaymentEvent {
+  id         String   @id @default(cuid())
+  paymentId  String?
+  payment    Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  purchaseId String?
+
+  source    String // RESULT_NOTIFICATION | POLL | ADMIN | SYSTEM
+  status    String?
+  hashValid Boolean
+  eventId   String  @unique
+  body      String  @db.LongText
+  ip        String?
+  processed Boolean @default(false) // did this event trigger the fulfil logic?
+  note      String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([paymentId, createdAt])
+}
+
+model Receipt {
+  id            String   @id @default(cuid())
+  receiptNumber String   @unique // ATG-RCPT-XXXXXXXX shown to the customer
+  purchaseId    String   @unique
+  purchase      Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemTitle     String
+  itemType      String
+  amount        Decimal  @db.Decimal(12, 2)
+  currency      String   @default("USD")
+  method        String?
+  paidAt        DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Refund {
+  id            String    @id @default(cuid())
+  purchaseId    String
+  purchase      Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Decimal   @db.Decimal(12, 2)
+  currency      String    @default("USD")
+  reason        String    @db.LongText
+  // REQUESTED | APPROVED | REJECTED | COMPLETED | FAILED
+  status        String    @default("REQUESTED")
+  adminNote     String?   @db.Text
+  // Provider reference recorded when the refund is completed.
+  providerRef   String?
+  requestedById String?
+  processedById String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+model PaymentAuditLog {
+  id         String   @id @default(cuid())
+  action     String // CHECKOUT_INITIATED | CALLBACK_RECEIVED | CALLBACK_HASH_INVALID | FULFILLED | REFUND_REQUESTED | ...
+  source     String // PROVIDER_CALLBACK | POLL | USER | ADMIN | SYSTEM
+  purchaseId String?
+  paymentId  String?
+  refundId   String?
+  actorId    String?
+  actorRole  String?
+  note       String?  @db.Text
+  metadata   String?  @db.LongText // JSON — never contains secrets/keys
+  createdAt  DateTime @default(now())
+
+  @@index([purchaseId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Broker ACCOUNT registration (as opposed to money movement above).  A member
+// submits the client id their broker issued them; an administrator then
+// verifies or rejects it.  Submitting a client id never grants anything on its
+// own — only an admin (or a signed provider callback) changes `status`.
+// ---------------------------------------------------------------------------
+
+model BrokerAccount {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broker   String @default("WELTRADE") // DERIV | WELTRADE
+  clientId String
+
+  // PENDING | VERIFIED | REJECTED  (never auto-promoted)
+  status       String  @default("PENDING")
+  rejectReason String? @db.LongText
+
+  reviewedById String?
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events BrokerAccountEvent[]
+
+  @@unique([userId, broker])
+  @@index([status, createdAt])
+}
+
+// Append-only history of a BrokerAccount's lifecycle. Rows are inserted, never
+// rewritten — `status` on the account is the current state, this is the trail.
+model BrokerAccountEvent {
+  id        String        @id @default(cuid())
+  accountId String
+  account   BrokerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  action     String // SUBMITTED | RESUBMITTED | VERIFIED | REJECTED
+  fromStatus String?
+  toStatus   String?
+  reason     String? @db.LongText
+
+  actorId   String?
+  actorRole String? // USER | ADMIN
+  actorName String?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+}

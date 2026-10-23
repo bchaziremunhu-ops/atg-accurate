@@ -1,0 +1,237 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  /* iOS standalone Safari (viewport-fit=cover) leaves the notch and home
+     indicator over the page — these feed env() so layout can clear them. */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+html {
+  /* iOS inflates text when the device is rotated — pin it to 100%. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+.auth-viewport {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  @apply bg-cream-100 text-ink font-sans antialiased;
+  /* No grey flash / blue flash on tap in the standalone app. */
+  -webkit-tap-highlight-color: transparent;
+  /* Standalone apps should not chain into pull-to-refresh or rubber-banding. */
+  overscroll-behavior-y: none;
+  background-color: #F7F8FA;
+}
+
+:focus-visible {
+  outline: 3px solid #BF5E0A;
+  outline-offset: 2px;
+}
+
+/* iOS Safari zooms the whole page when an input under 16px is focused —
+   keep touch inputs at 16px and only tighten up on real desktop pointers. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-cream-200 bg-white shadow-card;
+  }
+  .chip {
+    @apply whitespace-nowrap rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors;
+  }
+  .chip-active {
+    @apply border-gold-700 bg-gold-700 text-white;
+  }
+  .chip-idle {
+    @apply border-cream-300 bg-white text-ink-soft hover:border-gold-500 hover:bg-gold-50;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-gold {
+    @apply btn bg-gold-700 text-white shadow-gold hover:bg-gold-800;
+  }
+  .btn-outline {
+    @apply btn border border-cream-300 bg-white text-ink hover:border-gold-500 hover:bg-gold-50;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-soft hover:bg-cream-200;
+  }
+  .input {
+    @apply w-full rounded-xl border border-cream-300 bg-white px-4 py-3 text-sm outline-none transition
+      placeholder:text-ink-faint focus:border-gold-600 focus:ring-4 focus:ring-gold-100;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold text-ink-soft;
+  }
+  .section-title {
+    @apply text-lg font-bold tracking-tight text-ink;
+  }
+  .muted {
+    @apply text-sm text-ink-muted;
+  }
+  .gold-text {
+    @apply text-gold-700;
+  }
+}
+
+@layer utilities {
+  /* iPhone notch / home-indicator clearances (0px everywhere else). */
+  .pt-safe {
+    padding-top: var(--sat);
+  }
+  .pb-safe {
+    padding-bottom: var(--sab);
+  }
+  .px-safe {
+    padding-left: var(--sal);
+    padding-right: var(--sar);
+  }
+  .mt-safe {
+    margin-top: var(--sat);
+  }
+}
+
+/* Full-height panels (chat). 100vh on iOS counts the toolbar area that is
+   hidden in standalone mode, so prefer the dynamic viewport unit where the
+   browser supports it and keep 100vh as the fallback. */
+.chat-viewport {
+  height: calc(100vh - 9.25rem - var(--sab));
+  height: calc(100dvh - 9.25rem - var(--sab));
+}
+@media (min-width: 768px) {
+  .chat-viewport {
+    height: calc(100vh - 4.5rem);
+    height: calc(100dvh - 4.5rem);
+  }
+}
+
+/* Hide scrollbars on horizontal chip rows */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  @apply relative overflow-hidden bg-cream-200 rounded-lg;
+}
+.skeleton::after {
+  content: '';
+  @apply absolute inset-0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise {
+  animation: rise 0.28s ease-out both;
+}
+
+@keyframes splashPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-splash-pop {
+  animation: splashPop 0.7s ease-out both;
+}
+
+@keyframes splashBar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+.animate-splash-bar {
+  animation: splashBar 1.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Print only the certificate when saving to PDF */
+@media print {
+  body {
+    background: #fff !important;
+    background-image: none !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .cert-print,
+  .cert-print * {
+    visibility: visible;
+  }
+  .cert-print {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    margin: 0 auto;
+    box-shadow: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
