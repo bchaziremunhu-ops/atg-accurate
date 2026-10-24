@@ -17,7 +17,8 @@ persistent financial records. Do not put production credentials in Git.
    backups, and logs.
 2. Create a Railway project from the repository and set the service root
    directory to `/ATG`. `railway.toml` configures the API build, start command,
-   and health path.
+   schema push, and health path. The build installs dependencies from each
+   package directory (the repository root has no npm lockfile).
 3. Add a Railway MySQL service in the same project and environment. Keep it on
    private networking; do not create a public TCP proxy for normal app traffic.
 4. Set the app service's `DATABASE_URL` to Railway's private MySQL connection
@@ -37,34 +38,27 @@ persistent financial records. Do not put production credentials in Git.
 ## 2. Create the schema and initial administrator
 
 This deployment starts with a new, empty MySQL database; do not import local
-database backups. Install the Railway CLI, authenticate in your browser, and
-link it to the project:
+database backups. The API pre-deploy step creates/updates its schema in the
+Railway private network; do not import the local database backups.
 
-```powershell
-npm.cmd install --global @railway/cli
-railway login
-railway link
-```
-
-Then use the API service's private environment to prepare the database:
-
-```powershell
-npm.cmd ci --prefix ATG\server
-railway run --service <api-service> npm.cmd run prisma:generate --prefix ATG\server
-railway run --service <api-service> npm.cmd run prisma:push --prefix ATG\server
-```
+The pre-deploy command applies the Prisma schema to the Railway MySQL service
+on each deployment. It runs inside the Railway private network and does not
+use a destructive `--accept-data-loss` option. Review schema changes before
+deploying; if Prisma reports a potentially destructive change, the deployment
+will stop and should not be forced through without a backup and migration plan.
 
 Create the administrator once by setting `BOOTSTRAP_ADMIN_EMAIL`,
 `BOOTSTRAP_ADMIN_NAME`, and a unique `BOOTSTRAP_ADMIN_PASSWORD` of at least 16
 characters as private Railway service variables, then run:
 
 ```powershell
-railway run --service <api-service> npm.cmd run admin:bootstrap --prefix ATG\server
+railway ssh --service <api-service> -- node server/dist/prisma/bootstrap-admin.js
 ```
 
-The bootstrap refuses to run if any user already exists. Remove the one-time
-`BOOTSTRAP_ADMIN_PASSWORD` variable from Railway as soon as account creation
-succeeds. Do not run the demo seed in production.
+The bootstrap refuses to run if any user already exists. It needs the API
+deployment to be healthy first. Remove the one-time `BOOTSTRAP_ADMIN_PASSWORD`
+variable from Railway as soon as account creation succeeds. Do not run the
+demo seed in production.
 
 Deploy the API and verify `https://<app-domain>/api/health` returns HTTP 200.
 Before opening registration or accepting payments, test administrator sign-in,

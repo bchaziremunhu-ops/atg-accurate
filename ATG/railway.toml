@@ -1,9 +1,10 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm ci --prefix server && npm ci --prefix client && npm run prisma:generate --prefix server && npm run build --prefix client && npm run build --prefix server"
+buildCommand = "cd server && npm ci && npm run prisma:generate && npm run build && cd ../client && npm ci && npm run build"
 
 [deploy]
-startCommand = "npm run start --prefix server"
+preDeployCommand = ["sh", "-c", "cd server && npm run prisma:push"]
+startCommand = "cd server && npm run start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
