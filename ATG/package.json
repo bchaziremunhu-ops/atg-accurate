@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "description": "ATG Traders — full-stack trading education & signals platform",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "install:all": "cd server && npm install && cd ../client && npm install && cd ../mobile && npm install",
     "dev:server": "cd server && npm run dev",
