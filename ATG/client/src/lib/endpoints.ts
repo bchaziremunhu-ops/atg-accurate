@@ -30,6 +30,7 @@ import type {
   Refund,
   RegisterInput,
   Signal,
+  SiteSettings,
   Subscription,
   SubscriptionPlan,
   MembershipPackage,
@@ -40,23 +41,14 @@ import type {
 } from './types';
 
 export const authApi = {
-  // Registration collects everything the account needs up front (legal name,
-  // country/nationality, phone with country code, DOB, address, security
-  // question + answer, T&C acceptance). There is NO SMS/email/OTP step.
   register: (data: RegisterInput) =>
     api.post('/auth/register', data).then((r) => r.data as { user: User; accessToken: string; refreshToken: string }),
-  // Traders send their phone number, the admin sends their email - one
-  // `identifier` field covers both on the server.
   login: (data: { identifier: string; password: string }) =>
     api.post('/auth/login', data).then((r) => r.data as { user: User; accessToken: string; refreshToken: string }),
   logout: () => api.post('/auth/logout').then((r) => r.data as { ok: true }),
-  // ---- Account recovery (no SMS / email / OTP) -------------------------
-  // Step 1: phone number. Always acknowledged - never reveals existence.
   forgotStart: (phone: string) => api.post('/auth/forgot/start', { phone }).then((r) => r.data as { ok: true }),
-  // Step 2: full legal name + date of birth → the security question.
   forgotVerify: (data: { phone: string; fullName: string; dateOfBirth: string }) =>
     api.post('/auth/forgot/verify', data).then((r) => r.data as { question: { id: string; text: string } }),
-  // Step 3: security answer + new password.
   forgotReset: (data: {
     phone: string;
     fullName: string;
@@ -68,10 +60,35 @@ export const authApi = {
   me: () => api.get('/auth/me').then((r) => r.data as User),
 };
 
+export const siteSettingsApi = {
+  public: () => api.get('/site-settings').then((r) => r.data as SiteSettings),
+  admin: () => api.get('/admin/site-settings').then((r) => r.data as SiteSettings),
+  save: (settings: SiteSettings) => api.put('/admin/site-settings', settings).then((r) => r.data as SiteSettings),
+};
+
 export const userApi = {
   profile: () => api.get('/users/profile').then((r) => r.data as User),
-  update: (data: Partial<{ name: string; phone: string; country: string; bio: string; avatarUrl: string }>) =>
-    api.patch('/users/profile', data).then((r) => r.data),
+  update: (data: Partial<{ name: string; phone: string; country: string; bio: string; avatarUrl: string | null }>) =>
+    api.patch('/users/profile', data).then(
+      (r) =>
+        r.data as {
+          ok: true;
+          user: Pick<User, 'id' | 'name' | 'phone' | 'country' | 'bio' | 'avatarUrl'>;
+        },
+    ),
+  uploadAvatar: (file: File) => {
+    const data = new FormData();
+    data.append('avatar', file);
+    return api
+      .post('/users/profile/avatar', data)
+      .then(
+        (r) =>
+          r.data as {
+            ok: true;
+            user: Pick<User, 'id' | 'name' | 'phone' | 'country' | 'avatarUrl' | 'bio'>;
+          },
+      );
+  },
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post('/users/change-password', data).then((r) => r.data),
   watchlist: () => api.get('/users/watchlist').then((r) => r.data),
@@ -195,7 +212,6 @@ export const paymentApi = {
             completed?: boolean;
           },
       ),
-  /** Order detail for the pending screen. */
   order: (id: string) => api.get(`/payments/orders/${id}`).then((r) => r.data as Purchase),
   receipts: () => api.get('/payments/receipts').then((r) => r.data as Receipt[]),
   receipt: (id: string) => api.get(`/payments/receipts/${id}`).then((r) => r.data as Receipt),
@@ -296,7 +312,6 @@ export const adminApi = {
   purchases: (status?: string) => api.get('/admin/purchases', { params: { status } }).then((r) => r.data as (Purchase & { user: { name: string; email: string } })[]),
   updatePurchase: (id: string, data: { action: 'verify' | 'reject'; adminNote?: string }) =>
     api.patch(`/admin/purchases/${id}`, data).then((r) => r.data),
-  // ---- Payments dashboard ----
   payments: (params?: { status?: string; provider?: string; q?: string; from?: string; to?: string }) =>
     api
       .get('/admin/payments', { params })
@@ -344,10 +359,6 @@ export const adminApi = {
   deleteResource: (id: string) => api.delete(`/admin/resources/${id}`).then((r) => r.data),
 };
 
-// ---------------------------------------------------------------------------
-// Broker funding (Deriv / Weltrade deposits & withdrawals) — a separate
-// ledger from the ATG wallet.
-// ---------------------------------------------------------------------------
 
 export type BrokerFundingQuery = {
   broker?: string;
@@ -441,10 +452,6 @@ export const brokerAdminApi = {
   }) => api.put('/admin/broker/settings', data).then((r) => r.data as BrokerSettingsView),
 };
 
-// ---------------------------------------------------------------------------
-// Weltrade account registration: the member submits their broker client id,
-// an administrator verifies it. Nothing is granted on submit alone.
-// ---------------------------------------------------------------------------
 
 export const weltradeAccountApi = {
   get: () => api.get('/weltrade-account').then((r) => r.data as BrokerAccountConfig),
@@ -459,7 +466,6 @@ export const weltradeAccountAdminApi = {
     api.get('/admin/weltrade-accounts', { params }).then((r) => r.data as AdminBrokerAccountList),
   update: (id: string, data: { action: 'verify' | 'reject'; reason?: string }) =>
     api.patch(`/admin/weltrade-accounts/${id}`, data).then((r) => r.data as AdminBrokerAccount),
-  /** Empty string clears the link (falls back to the env default). */
   saveConfig: (registerUrl: string) =>
     api
       .put('/admin/weltrade-accounts/config', { registerUrl })

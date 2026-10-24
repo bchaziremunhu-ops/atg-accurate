@@ -1,11 +1,3 @@
-/**
- * Weltrade broker-account registration (client id + admin verification).
- * Run with: npm test
- *
- * The rule this file defends: submitting a client id grants nothing. `status`
- * only ever moves through an administrator action, and the sign-up URL is never
- * invented — it comes from configuration or it is null.
- */
 process.env.NODE_ENV = 'test';
 
 import http from 'node:http';
@@ -247,8 +239,6 @@ async function main() {
     assert.equal(anonAdmin.status, 401);
   });
 
-  // Leave configuration exactly as we found it, and remove the test members
-  // (cascades their BrokerAccount + events rows).
   await req('/admin/weltrade-accounts/config', {
     method: 'PUT',
     body: JSON.stringify({ registerUrl: configBefore.registerUrl ?? '' }),

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import { syncSignalRoomPost } from '../src/services/signalRooms.js';
@@ -7,11 +8,18 @@ const prisma = new PrismaClient();
 const GOLD = 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&q=80';
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('The demo seed is disabled in production. Use the one-time admin bootstrap instead.');
+  }
+
   console.log('Seeding ATG Traders…');
 
-  const adminHash = await bcrypt.hash('1953', 12);
+  const seedPassword = process.env.ADMIN_SEED_PASSWORD;
+  if (!seedPassword || seedPassword.length < 16) {
+    throw new Error('Set ADMIN_SEED_PASSWORD to a unique password of at least 16 characters before seeding.');
+  }
+  const adminHash = await bcrypt.hash(seedPassword, 12);
 
-  // ---- The single administrator account (traders register themselves) ----
   const admin = await prisma.user.upsert({
     where: { email: 'blessed@atg.com' },
     update: { role: 'ADMIN', passwordHash: adminHash, membership: 'VIP_DERIV', isVip: true },
@@ -27,7 +35,6 @@ async function main() {
     },
   });
 
-  // ---- Signals (each targets an audience -> appears only in that room) ----
   await prisma.signal.deleteMany({});
   await prisma.signal.createMany({
     data: [
@@ -144,7 +151,6 @@ async function main() {
     ],
   });
 
-  // ---- Courses: 3 free short courses + 3 paid (verified payment required) ----
   await prisma.course.deleteMany({});
   const courseDefs = [
     {
@@ -214,9 +220,7 @@ async function main() {
             title,
             order: idx,
             durationMin: Math.round(c.duration / c.lessons.length),
-            // First lesson of every course is a free preview.
             isFree: idx === 0,
-            // No fake media: administrators attach real lesson videos/PDFs.
             videoUrl: null,
           })),
         },
@@ -224,7 +228,6 @@ async function main() {
     });
   }
 
-  // ---- Rooms: general feed + separate Deriv VIP and Weltrade VIP rooms ----
   await prisma.groupPost.deleteMany({});
   const general = await prisma.group.upsert({
     where: { name: 'General' },
@@ -302,15 +305,13 @@ async function main() {
     await prisma.postLike.createMany({ data: [{ postId: p.id, userId: admin.id }] });
   }
 
-  // Mirror each demo signal into its audience's room using the same logic the
-  // admin publish route uses, so members see signals where they actually are.
   const seededSignals = await prisma.signal.findMany();
   for (const s of seededSignals) {
     await syncSignalRoomPost(s.id);
   }
 
   console.log('Seed complete.');
-  console.log('  Admin : blessed@atg.com / 1953  (email + password)');
+  console.log(`  Admin: ${admin.email} (sign in with ADMIN_SEED_PASSWORD).`);
   console.log('  Traders sign up / sign in with their phone number + password.');
 }
 

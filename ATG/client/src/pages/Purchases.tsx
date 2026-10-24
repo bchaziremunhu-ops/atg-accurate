@@ -9,8 +9,8 @@ import { apiError } from '../lib/api';
 import type { Purchase } from '../lib/types';
 
 export default function Purchases() {
-  const purchases = useQuery({ queryKey: ['purchases'], queryFn: paymentApi.purchases });
-  const requests = useQuery({ queryKey: ['purchase-requests'], queryFn: purchaseRequestApi.list });
+  const purchases = useQuery({ queryKey: ['purchases'], queryFn: paymentApi.purchases, refetchOnMount: 'always' });
+  const requests = useQuery({ queryKey: ['purchase-requests'], queryFn: purchaseRequestApi.list, refetchOnMount: 'always' });
   const txns = useQuery({ queryKey: ['transactions'], queryFn: walletApi.transactions });
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -27,7 +27,16 @@ export default function Purchases() {
       <Link to="/profile" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-muted">
         <ArrowLeft className="h-4 w-4" /> Profile
       </Link>
-      <h1 className="mb-4 text-2xl font-extrabold">Purchase History</h1>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold">My purchases</h1>
+          <p className="text-sm text-ink-muted">Check payment reviews, membership access, and course purchases here.</p>
+        </div>
+        <div className="flex gap-2">
+          <Link to="/profile/subscription" className="btn-outline px-3 py-2 text-xs">Memberships</Link>
+          <Link to="/education" className="btn-outline px-3 py-2 text-xs">Courses</Link>
+        </div>
+      </div>
 
       <h2 className="section-title mb-2">Purchases</h2>
       {purchases.isLoading ? (
@@ -58,7 +67,7 @@ export default function Purchases() {
           <Button size="sm" variant="outline" onClick={() => requests.refetch()}>Try again</Button>
         </Card>
       ) : (requests.data ?? []).length === 0 ? (
-        <Card><EmptyState title="No purchase requests yet" subtitle="Your course and membership requests will appear here." icon={<FileText />} /></Card>
+        <Card><EmptyState title="No requests yet" subtitle="When you send a payment for a membership or course, its review status will appear here." icon={<FileText />} /></Card>
       ) : (
         <div className="space-y-2">
           {requests.data!.map((request) => (
@@ -75,10 +84,11 @@ export default function Purchases() {
                     </p>
                   )}
                 </div>
-                <Badge tone={request.status === 'APPROVED' ? 'green' : request.status === 'REJECTED' ? 'red' : 'gold'}>
-                  {request.status.replace('_', ' ')}
+                <Badge tone={request.status === 'APPROVED' ? 'green' : request.status === 'REJECTED' ? 'red' : request.status === 'CANCELLED' ? 'grey' : 'gold'}>
+                  {requestStatusLabel(request.status)}
                 </Badge>
               </div>
+              <p className="text-xs text-ink-muted">{requestStatusDescription(request.status)}</p>
               {request.decisionReason && <p className="text-xs text-danger">Decision reason: {request.decisionReason}</p>}
               {request.customerMessage && <p className="rounded-lg bg-cream-100 p-2 text-xs">{request.customerMessage}</p>}
               {request.status === 'APPROVED' && request.approvalReference && (
@@ -87,7 +97,7 @@ export default function Purchases() {
               <div className="space-y-1 border-t border-cream-200 pt-2">
                 {request.events.map((event) => (
                   <p key={event.id} className="text-[11px] text-ink-muted">
-                    {new Date(event.createdAt).toLocaleString()} · {event.action.replace('_', ' ')}
+                    {new Date(event.createdAt).toLocaleString()} · {event.action.replace(/_/g, ' ').toLowerCase()}
                     {event.reason ? ` — ${event.reason}` : ''}
                     {event.customerMessage ? ` · ${event.customerMessage}` : ''}
                   </p>
@@ -134,6 +144,40 @@ export default function Purchases() {
       <div className="h-4" />
     </div>
   );
+}
+
+function requestStatusLabel(status: string): string {
+  switch (status) {
+    case 'SUBMITTED':
+      return 'Received';
+    case 'UNDER_REVIEW':
+      return 'Being checked';
+    case 'APPROVED':
+      return 'Approved';
+    case 'REJECTED':
+      return 'Needs attention';
+    case 'CANCELLED':
+      return 'Cancelled';
+    default:
+      return status.replace(/_/g, ' ').toLowerCase();
+  }
+}
+
+function requestStatusDescription(status: string): string {
+  switch (status) {
+    case 'SUBMITTED':
+      return 'We’ve received your payment details. Your request is waiting for review.';
+    case 'UNDER_REVIEW':
+      return 'Your payment is being checked. We’ll update this request when the review is complete.';
+    case 'APPROVED':
+      return 'Payment confirmed. Your course or membership access is ready.';
+    case 'REJECTED':
+      return 'This request could not be approved. Check the message below for what to do next.';
+    case 'CANCELLED':
+      return 'This request was cancelled and will not be reviewed.';
+    default:
+      return '';
+  }
 }
 
 function roomNames(snapshot?: string | null): string {

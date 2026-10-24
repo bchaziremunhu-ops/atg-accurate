@@ -322,6 +322,10 @@ async function main() {
     });
 
     await step('review, approve, unlock only the purchased course, and prevent duplicate approval', async () => {
+      const beforeApproval = await json('/courses', userToken);
+      const beforeApprovalCourses = await beforeApproval.json() as Array<{ id: string; entitled: boolean }>;
+      assert.equal(beforeApprovalCourses.find((item) => item.id === course.id)?.entitled, false);
+
       const review = await json(`/purchase-requests/admin/${firstRequestId}/review`, adminToken, 'POST', {
         action: 'UNDER_REVIEW',
         internalNotes: 'Internal test review',
@@ -342,6 +346,9 @@ async function main() {
       assert.ok(paidCourse);
       assert.equal(paidCourse.amount, 12.5);
       assert.ok(await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: user.id, courseId: course.id } } }));
+      const afterApproval = await json('/courses', userToken);
+      const afterApprovalCourses = await afterApproval.json() as Array<{ id: string; entitled: boolean }>;
+      assert.equal(afterApprovalCourses.find((item) => item.id === course.id)?.entitled, true);
       const otherCourseDetail = await json(`/courses/${otherCourse.slug}`, userToken);
       const otherCourseData = await otherCourseDetail.json() as { entitled: boolean };
       assert.equal(otherCourseData.entitled, false);

@@ -15,7 +15,7 @@ const newPackage: PackageForm = {
   currency: 'USD',
   durationDays: 30,
   activationRule: 'APPROVAL',
-  includedRooms: ['VIP_WELTRADE'],
+  includedRooms: ['VIP_DERIV', 'VIP_WELTRADE'],
   saleStatus: 'AVAILABLE',
 };
 
@@ -79,6 +79,31 @@ export default function AdminPurchaseRequests() {
 
       <Card className="space-y-3">
         <h2 className="section-title">{editing ? 'Edit membership package' : 'Create membership package'}</h2>
+        {!editing && (
+          <div className="space-y-2">
+            <p className="text-xs text-ink-muted">Start a both-room VIP plan. Enter its price below before creating it.</p>
+            <div className="flex flex-wrap gap-2">
+              {[30, 60, 90].map((durationDays) => (
+                <Button
+                  key={durationDays}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setForm({
+                    ...newPackage,
+                    title: `VIP Membership - ${durationDays} Days`,
+                    slug: `vip-membership-${durationDays}-days`,
+                    currency: 'USD',
+                    durationDays,
+                    includedRooms: ['VIP_DERIV', 'VIP_WELTRADE'],
+                  })}
+                >
+                  Set up {durationDays}-day plan
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Package name" required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value, slug: editing ? form.slug : event.target.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') })} />
           <Field label="Slug" required value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} />

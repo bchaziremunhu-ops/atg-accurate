@@ -11,7 +11,9 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
+    "admin:bootstrap": "tsx prisma/bootstrap-admin.ts",
     "test:manual-purchases": "tsx src/tests/manualPurchases.test.ts",
+    "test:profile-avatar": "tsx src/tests/profileAvatar.test.ts",
     "test": "tsx src/tests/smoke.test.ts && tsx src/tests/brokerFunding.test.ts && tsx src/tests/brokerAccount.test.ts && tsx src/tests/authRecovery.test.ts"
   },
   "prisma": {

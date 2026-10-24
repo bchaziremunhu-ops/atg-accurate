@@ -1,10 +1,3 @@
-/**
- * Account-recovery security questions.
- *
- * The list is fixed and server-owned: only ids are stored on the user row, so
- * a compromised client cannot swap in a weaker question, and the wording can
- * be changed (or translated) later without a migration.
- */
 
 export interface SecurityQuestion {
   id: string;

@@ -13,6 +13,8 @@ server/private/
 *.db-journal
 server/prisma/dev.db*
 server/pgdata/
+backups/
+logs/*.log
 
 # builds
 dist/

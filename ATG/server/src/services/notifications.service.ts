@@ -4,7 +4,6 @@ import { env, integrations } from '../config/env.js';
 let webpush: typeof import('web-push') | null = null;
 if (integrations.webPush) {
   try {
-    // dynamic import so the app still runs without VAPID keys configured
     webpush = await import('web-push');
     webpush.setVapidDetails(env.vapidSubject, env.vapidPublicKey, env.vapidPrivateKey);
   } catch (e) {
@@ -20,18 +19,15 @@ export interface NotifyInput {
   link?: string;
 }
 
-/**
- * Creates an in-app notification and (when configured) fans it out to
- * registered Web Push subscriptions. Mobile push (FCM) is delivered by the
- * device layer and requires FCM_SERVER_KEY.
- */
 export async function notify({ userId, title, body, type = 'SYSTEM', link }: NotifyInput) {
   const notification = await prisma.notification.create({
     data: { userId, title, body, type, link },
   });
 
   if (webpush) {
-    const subs = await prisma.pushSubscription.findMany({ where: { userId } });
+    const subs = await prisma.pushSubscription.findMany({
+      where: { userId, NOT: { endpoint: { startsWith: 'https://exp.host/--/api/v2/push/send?' } } },
+    });
     await Promise.allSettled(
       subs.map((s) =>
         webpush!
@@ -47,6 +43,37 @@ export async function notify({ userId, title, body, type = 'SYSTEM', link }: Not
           }),
       ),
     );
+  }
+
+  const expoSubs = await prisma.pushSubscription.findMany({
+    where: { userId, endpoint: { startsWith: 'https://exp.host/--/api/v2/push/send?' } },
+  });
+  const expoDelivery = await Promise.allSettled(
+    expoSubs.map(async (sub) => {
+      const token = new URL(sub.endpoint).searchParams.get('expoPushToken');
+      if (!token) return;
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: token, title, body, data: { link, type }, sound: 'default' }),
+      });
+      if (!response.ok) {
+        console.warn(`[push] Expo delivery failed with HTTP ${response.status}`);
+        return;
+      }
+      const result = (await response.json()) as { data?: { status?: string; details?: { error?: string } } | { status?: string; details?: { error?: string } }[] };
+      const ticket = Array.isArray(result.data) ? result.data[0] : result.data;
+      if (ticket?.details?.error === 'DeviceNotRegistered') {
+        await prisma.pushSubscription.delete({ where: { id: sub.id } });
+      } else if (ticket?.status === 'error') {
+        console.warn(`[push] Expo ticket failed: ${ticket.details?.error ?? 'unknown error'}`);
+      }
+    }),
+  );
+  for (const result of expoDelivery) {
+    if (result.status === 'rejected') {
+      console.warn('[push] Expo request failed:', result.reason instanceof Error ? result.reason.message : String(result.reason));
+    }
   }
 
   return notification;
@@ -69,11 +96,6 @@ export async function broadcastToAll(input: Omit<NotifyInput, 'userId'>) {
   return notifyMany(users.map((u) => u.id), input);
 }
 
-/**
- * Notify exactly the members who can access a given content level.
- * FREE -> everyone; PAID -> PAID + both VIP tiers + admins;
- * VIP_DERIV -> Deriv VIP + admins; VIP_WELTRADE -> Weltrade VIP + admins.
- */
 export async function broadcastToAudience(
   level: 'FREE' | 'PAID' | 'VIP_DERIV' | 'VIP_WELTRADE',
   input: Omit<NotifyInput, 'userId'>,

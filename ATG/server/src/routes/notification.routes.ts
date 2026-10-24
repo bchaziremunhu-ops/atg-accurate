@@ -40,10 +40,12 @@ notificationRouter.post(
   }),
 );
 
-// ---- Web Push registration ----
 const subSchema = z.object({
   endpoint: z.string().url(),
   keys: z.object({ p256dh: z.string(), auth: z.string() }),
+});
+const expoTokenSchema = z.object({
+  token: z.string().regex(/^(Exponent|Expo)PushToken\[[A-Za-z0-9_-]+\]$/),
 });
 
 notificationRouter.post(
@@ -56,6 +58,30 @@ notificationRouter.post(
       create: { userId: req.user!.id, endpoint: data.endpoint, p256dh: data.keys.p256dh, auth: data.keys.auth },
     });
     res.status(201).json({ ok: true, id: sub.id });
+  }),
+);
+
+notificationRouter.post(
+  '/push/expo-token',
+  asyncHandler(async (req, res) => {
+    const { token } = expoTokenSchema.parse(req.body);
+    const endpoint = `https://exp.host/--/api/v2/push/send?expoPushToken=${encodeURIComponent(token)}`;
+    const sub = await prisma.pushSubscription.upsert({
+      where: { endpoint },
+      update: { userId: req.user!.id, p256dh: '', auth: '' },
+      create: { userId: req.user!.id, endpoint, p256dh: '', auth: '' },
+    });
+    res.status(201).json({ ok: true, id: sub.id });
+  }),
+);
+
+notificationRouter.delete(
+  '/push/expo-token',
+  asyncHandler(async (req, res) => {
+    const { token } = expoTokenSchema.parse(req.body);
+    const endpoint = `https://exp.host/--/api/v2/push/send?expoPushToken=${encodeURIComponent(token)}`;
+    await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: req.user!.id } });
+    res.json({ ok: true });
   }),
 );
 

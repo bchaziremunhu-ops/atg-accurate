@@ -2,50 +2,95 @@ import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bell, BellOff } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Camera, UserRound, X } from 'lucide-react';
 import { userApi, notificationApi } from '../lib/endpoints';
 import { Button, Card, Field, Spinner } from '../components/ui';
 import { useToast } from '../components/Toast';
 import { apiError } from '../lib/api';
 import { useAuth } from '../store/auth';
+import type { User } from '../lib/types';
 
 export default function SettingsPage() {
-  const { refreshUser } = useAuth();
+  const { updateUser } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const nativePlatform = Capacitor.isNativePlatform();
   const profile = useQuery({ queryKey: ['profile'], queryFn: userApi.profile });
   const hydratedUserId = useRef<string | null>(null);
-  const [form, setForm] = useState<{ name: string; phone: string; country: string; bio: string; avatarUrl: string }>({
+  const [form, setForm] = useState<{ name: string; phone: string; country: string; bio: string }>({
     name: '',
     phone: '',
     country: '',
     bio: '',
-    avatarUrl: '',
   });
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState('');
   const [pw, setPw] = useState({ current: '', next: '' });
   const [pushOn, setPushOn] = useState(false);
 
   const p = profile.data;
+  function applyProfileUpdate(updated: Pick<User, 'id' | 'name' | 'phone' | 'country' | 'bio' | 'avatarUrl'>) {
+    updateUser(updated);
+    qc.setQueryData<User>(['profile'], (current) => (current?.id === updated.id ? { ...current, ...updated } : current));
+    void qc.invalidateQueries({ queryKey: ['posts'] });
+    void qc.invalidateQueries({ queryKey: ['signals'] });
+  }
+
   useEffect(() => {
     if (!p || hydratedUserId.current === p.id) return;
-    setForm({ name: p.name, phone: p.phone ?? '', country: p.country ?? '', bio: p.bio ?? '', avatarUrl: p.avatarUrl ?? '' });
+    setForm({ name: p.name, phone: p.phone ?? '', country: p.country ?? '', bio: p.bio ?? '' });
     hydratedUserId.current = p.id;
   }, [p]);
+
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreview('');
+      return;
+    }
+    const preview = URL.createObjectURL(avatarFile);
+    setAvatarPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [avatarFile]);
 
   const save = useMutation({
     mutationFn: () =>
       userApi.update({
-        name: form.name,
-        phone: form.phone,
-        country: form.country,
-        bio: form.bio,
-        ...(form.avatarUrl ? { avatarUrl: form.avatarUrl } : {}),
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        country: form.country.trim(),
+        bio: form.bio.trim(),
       }),
-    onSuccess: () => {
+    onSuccess: ({ user }) => {
+      applyProfileUpdate(user);
+      setForm({
+        name: user.name,
+        phone: user.phone ?? '',
+        country: user.country ?? '',
+        bio: user.bio ?? '',
+      });
       toast('Profile updated ✔', 'success');
-      refreshUser();
-      qc.invalidateQueries({ queryKey: ['profile'] });
+    },
+    onError: (e) => toast(apiError(e), 'error'),
+  });
+
+  const uploadAvatar = useMutation({
+    mutationFn: () => {
+      if (!avatarFile) throw new Error('Choose an image first.');
+      return userApi.uploadAvatar(avatarFile);
+    },
+    onSuccess: ({ user }) => {
+      setAvatarFile(null);
+      applyProfileUpdate(user);
+      toast('Profile picture updated', 'success');
+    },
+    onError: (e) => toast(apiError(e), 'error'),
+  });
+
+  const removeAvatar = useMutation({
+    mutationFn: async () => (await userApi.update({ avatarUrl: null })).user,
+    onSuccess: (user) => {
+      applyProfileUpdate(user);
+      toast('Profile picture removed', 'success');
     },
     onError: (e) => toast(apiError(e), 'error'),
   });
@@ -91,6 +136,7 @@ export default function SettingsPage() {
         <ArrowLeft className="h-4 w-4" /> Profile
       </Link>
       <h1 className="mb-4 text-2xl font-extrabold">Account Settings</h1>
+      <p className="mb-4 text-sm text-ink-muted">Keep your account details and profile picture up to date.</p>
 
       {profile.isLoading ? (
         <Card className="flex items-center gap-2 text-sm text-ink-muted">
@@ -103,11 +149,61 @@ export default function SettingsPage() {
         </Card>
       ) : (
         <Card className="space-y-4">
-          <h2 className="section-title">Personal details</h2>
+          <div>
+            <h2 className="section-title">Profile</h2>
+            <p className="mt-1 text-xs text-ink-muted">Your name and picture are shown with your community posts.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-gold-200 bg-cream-100">
+              {(avatarPreview || p?.avatarUrl) ? (
+                <img src={avatarPreview || p?.avatarUrl || ''} alt="Profile preview" className="h-full w-full object-cover" />
+              ) : (
+                <UserRound className="h-8 w-8 text-ink-muted" />
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="btn-outline min-h-10 cursor-pointer px-3 py-2 text-xs">
+                <Camera className="h-4 w-4" /> Choose picture
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    event.target.value = '';
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast('Choose an image smaller than 5 MB.', 'error');
+                      return;
+                    }
+                    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                      toast('Choose a JPEG, PNG, or WebP image.', 'error');
+                      return;
+                    }
+                    setAvatarFile(file);
+                  }}
+                />
+              </label>
+              {avatarFile && (
+                <>
+                  <Button size="sm" loading={uploadAvatar.isPending} onClick={() => uploadAvatar.mutate()}>
+                    Upload picture
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setAvatarFile(null)} aria-label="Cancel picture selection">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+              {!avatarFile && p?.avatarUrl && (
+                <Button size="sm" variant="ghost" loading={removeAvatar.isPending} onClick={() => removeAvatar.mutate()}>
+                  Remove picture
+                </Button>
+              )}
+            </div>
+          </div>
           <Field label="Full name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
           <Field label="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
           <Field label="Country" value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} />
-          <Field label="Avatar URL" placeholder="https://…" value={form.avatarUrl} onChange={(e) => setForm((f) => ({ ...f, avatarUrl: e.target.value }))} />
           <div>
             <label className="label">Bio</label>
             <textarea
@@ -116,7 +212,7 @@ export default function SettingsPage() {
               onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
             />
           </div>
-          <Button onClick={() => save.mutate()} loading={save.isPending}>
+          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={form.name.trim().length < 2}>
             Save changes
           </Button>
         </Card>
@@ -159,7 +255,6 @@ export default function SettingsPage() {
   );
 }
 
-/** iOS cannot receive web push, and the only way in is Safari → Add to Home Screen. */
 function InstallCard({ pushOn }: { pushOn: boolean }) {
   const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

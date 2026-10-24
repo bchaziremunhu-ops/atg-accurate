@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Lock, Play, Search } from 'lucide-react';
+import { CheckCircle2, Lock, Play, Search } from 'lucide-react';
 import { courseApi } from '../lib/endpoints';
 import { Button, Chip, SkeletonRow } from '../components/ui';
 import type { Course } from '../lib/types';
 
 const levels = ['All Courses', 'Beginner', 'Intermediate', 'Advanced'];
 
-function CourseCard({ course }: { course: Course }) {
+function CourseCard({ course, owned = false }: { course: Course; owned?: boolean }) {
   const first = course.lessons[0];
   return (
     <Link to={`/education/${course.slug}`} className="card group flex items-center gap-3 p-3 transition-colors hover:border-gold-300 sm:gap-4 sm:p-4">
@@ -28,12 +28,24 @@ function CourseCard({ course }: { course: Course }) {
             FREE
           </span>
         )}
+        {!course.isFree && (
+          <span className="absolute bottom-1 left-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-ink">
+            ONE-TIME
+          </span>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{course.title}</p>
         <p className="text-xs text-ink-muted">
           {first ? `${first.title} · ${first.durationMin} min` : `${course.lessonCount} lessons`}
         </p>
+        {owned ? (
+          <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-success">
+            <CheckCircle2 className="h-3 w-3" /> Purchased · access confirmed
+          </p>
+        ) : !course.isFree ? (
+          <p className="mt-1 text-[10px] text-ink-muted">Buy once · unlock after payment review</p>
+        ) : null}
         {course.saleStatus && course.saleStatus !== 'AVAILABLE' && (
           <p className="mt-1 text-[10px] font-semibold text-danger">
             {course.saleStatus === 'SOLD_OUT' ? 'Sold out' : 'Not currently available'}
@@ -46,8 +58,8 @@ function CourseCard({ course }: { course: Course }) {
           <span className="text-[10px] font-semibold tabular-nums text-ink-muted">{course.progress}%</span>
         </div>
       </div>
-      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-colors ${course.saleStatus && course.saleStatus !== 'AVAILABLE' ? 'bg-cream-200 text-ink-muted' : 'bg-gold-50 text-gold-800 group-hover:bg-gold-100'}`}>
-        {course.saleStatus && course.saleStatus !== 'AVAILABLE' ? <Lock className="h-4 w-4" /> : course.isFree ? <Play className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-colors ${owned || course.isFree || !course.saleStatus || course.saleStatus === 'AVAILABLE' ? 'bg-gold-50 text-gold-800 group-hover:bg-gold-100' : 'bg-cream-200 text-ink-muted'}`}>
+        {owned || course.isFree ? <Play className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
       </span>
     </Link>
   );
@@ -56,9 +68,15 @@ function CourseCard({ course }: { course: Course }) {
 export default function Education() {
   const [level, setLevel] = useState('All Courses');
   const [q, setQ] = useState('');
-  const courses = useQuery({ queryKey: ['courses', level], queryFn: () => courseApi.list(level) });
+  const courses = useQuery({
+    queryKey: ['courses', level],
+    queryFn: () => courseApi.list(level),
+    refetchOnMount: 'always',
+  });
 
   const filtered = (courses.data ?? []).filter((c) => c.title.toLowerCase().includes(q.toLowerCase()));
+  const ownedCourses = filtered.filter((course) => !course.isFree && course.entitled);
+  const catalogCourses = filtered.filter((course) => course.isFree || !course.entitled);
 
   return (
     <div className="animate-rise px-4 pt-4 md:px-8 md:pt-6">
@@ -88,6 +106,24 @@ export default function Education() {
         ))}
       </div>
 
+      <section className="mb-6">
+        <h2 className="section-title mb-2">Your courses</h2>
+        {courses.isLoading ? (
+          <SkeletonRow />
+        ) : courses.isError ? (
+          <p className="text-sm text-ink-muted">Purchased course access couldn&apos;t be loaded.</p>
+        ) : ownedCourses.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-cream-300 px-4 py-3 text-sm text-ink-muted">
+            Purchased courses will appear here after payment is approved.
+          </p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {ownedCourses.map((course) => <CourseCard key={course.id} course={course} owned />)}
+          </div>
+        )}
+      </section>
+
+      <h2 className="section-title mb-2">Course catalogue</h2>
       <div className="grid gap-3 md:grid-cols-2">
         {courses.isLoading ? (
           <>
@@ -100,12 +136,16 @@ export default function Education() {
             <p className="text-xs text-ink-muted">Check your connection and try again.</p>
             <Button size="sm" variant="outline" onClick={() => courses.refetch()}>Try again</Button>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : catalogCourses.length === 0 ? (
           <p className="py-10 text-center text-sm text-ink-muted">
-            {q.trim() ? 'No courses match your search.' : 'No courses are available in this level yet.'}
+            {q.trim()
+              ? 'No courses match your search.'
+              : ownedCourses.length > 0
+                ? 'You have purchased all courses matching this level. Your access is listed above.'
+                : 'No courses are available in this level yet.'}
           </p>
         ) : (
-          filtered.map((c) => <CourseCard key={c.id} course={c} />)
+          catalogCourses.map((c) => <CourseCard key={c.id} course={c} />)
         )}
       </div>
       <div className="h-4" />

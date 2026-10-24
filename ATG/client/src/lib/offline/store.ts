@@ -1,10 +1,3 @@
-/**
- * On-device database for the explicitly selected offline/demo mode.
- *
- * This is separate from the shared server database and must not be used for
- * shared accounts or production transactions. The seed mirrors server demo
- * content; mutations persist in localStorage on this device.
- */
 
 import type {
   BrokerAuditEntry,
@@ -19,16 +12,13 @@ export interface UserRow {
   name: string;
   email: string;
   phone: string | null;
-  /** Canonical international number (`+263771234567`) — new registrations only. */
   phoneE164?: string | null;
   passwordHash: string;
   country: string | null;
   nationality?: string | null;
-  /** ISO date string (YYYY-MM-DD). */
   dateOfBirth?: string | null;
   address?: string | null;
   securityQuestion?: string | null;
-  /** PBKDF2/scrypt-style hash of the normalised answer — never plaintext. */
   securityAnswerHash?: string | null;
   termsAcceptedAt?: string | null;
   privacyAcceptedAt?: string | null;
@@ -44,7 +34,6 @@ export interface UserRow {
   createdAt: string;
 }
 
-/** On-device analogue of the server SecurityEvent audit log. */
 export interface SecurityEventRow {
   id: string;
   userId: string | null;
@@ -260,11 +249,10 @@ export interface WatchRow {
   createdAt: string;
 }
 
-// Broker ACCOUNT registration (Weltrade): the member's client id + admin review.
 export interface BrokerAccountEventRow {
   id: string;
   accountId: string;
-  action: string; // SUBMITTED | UPDATED | RESUBMITTED | VERIFIED | REJECTED
+  action: string;
   fromStatus: string | null;
   toStatus: string | null;
   reason: string | null;
@@ -314,21 +302,14 @@ export interface OfflineDb {
   brokerAudit: BrokerAuditEntry[];
   brokerAccounts: BrokerAccountRow[];
   brokerAccountEvents: BrokerAccountEventRow[];
-  /** Admin-configurable Weltrade sign-up link; null means "not configured". */
   weltradeRegisterUrl: string | null;
   watchlist: WatchRow[];
   subscriptions: SubscriptionRow[];
-  /** On-device security audit log (registration, logins, recovery). */
   securityEvents: SecurityEventRow[];
 }
 
 const KEY = 'atg.offline.db';
 
-/**
- * Official Weltrade portal baked into the standalone build so the card's button
- * works on a phone with no server to read configuration from. Admins can still
- * replace it at runtime (Admin → Weltrade Accounts).
- */
 export const DEFAULT_WELTRADE_REGISTER_URL = 'https://secure.weltrade.com';
 
 export const DEFAULT_BROKER_SETTINGS: BrokerSettings = {
@@ -346,7 +327,6 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
-// --- password hashing (WebCrypto, with a sync fallback for odd contexts) ---
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = Math.random().toString(36).slice(2, 12);
@@ -359,21 +339,13 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return (await sha256Hex(salt + password)) === hash;
 }
 
-// --- security answers (PBKDF2, same threat model as the server's scrypt) ---
 
-/** Canonical form — must match the server's normalizeAnswer(). */
 export function normalizeAnswer(raw: string): string {
   return (raw ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 const PBKDF2_ITERATIONS = 310_000;
 
-/**
- * Hashes a security answer with PBKDF2-SHA256 and a per-answer random salt.
- * Format: `pbkdf2:<iterations>:<saltB64>:<hashB64>`. Answers are low-entropy
- * secrets, so a fast unsalted hash would be brute-forceable from a stolen
- * device backup — the KDF is deliberate.
- */
 export async function hashSecurityAnswer(raw: string): Promise<string> {
   const answer = normalizeAnswer(raw);
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -400,8 +372,6 @@ async function pbkdf2(password: string, salt: Uint8Array, iterations: number): P
   const subtle = globalThis.crypto?.subtle;
   const encLocal = new TextEncoder();
   if (!subtle) {
-    // Extremely old WebView without WebCrypto: iterated SHA-256 as a
-    // degraded-but-still-salted fallback (verify follows the stored scheme).
     let out = new Uint8Array(await sha256Buf([salt, encLocal.encode(password)]));
     for (let i = 1; i < Math.min(iterations, 20_000); i++) {
       out = new Uint8Array(await sha256Buf([out, encLocal.encode(password)]));
@@ -446,9 +416,6 @@ async function sha256Hex(input: string): Promise<string> {
     const buf = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
     return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // crypto.subtle only exists in secure contexts — e.g. a PWA opened over
-  // http:// on a LAN address has none. Fall back to the same SHA-256,
-  // synchronously, so hashes stay strong and identical either way.
   return sha256Sync(input);
 }
 
@@ -463,7 +430,6 @@ const SHA256_K = new Uint32Array([
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ]);
 
-/** Pure-JS SHA-256 (lowercase hex) — used when WebCrypto is unavailable. */
 export function sha256Sync(input: string): string {
   const bytes = new TextEncoder().encode(input);
   const padded = new Uint8Array(Math.ceil((bytes.length + 9) / 64) * 64);
@@ -506,7 +472,6 @@ export function sha256Sync(input: string): string {
   return out;
 }
 
-// --- load / save -----------------------------------------------------------
 
 let cache: OfflineDb | null = null;
 let initPromise: Promise<OfflineDb> | null = null;
@@ -531,16 +496,12 @@ async function init(): Promise<OfflineDb> {
     try {
       const parsed = JSON.parse(raw) as OfflineDb;
       if (parsed && parsed.v === 1 && Array.isArray(parsed.users) && parsed.users.length > 0) {
-        // Backfill columns added by later app versions. An explicit `null`
-        // link means an admin cleared it — only fill in when the column is
-        // missing entirely (an install from before this feature existed).
         parsed.brokerAccounts ??= [];
         parsed.brokerAccountEvents ??= [];
         parsed.securityEvents ??= [];
         if (parsed.weltradeRegisterUrl === undefined) {
           parsed.weltradeRegisterUrl = DEFAULT_WELTRADE_REGISTER_URL;
         }
-        // New registration/recovery columns on existing users.
         for (const u of parsed.users) {
           u.phoneE164 ??= null;
           u.nationality ??= null;
@@ -565,13 +526,11 @@ async function init(): Promise<OfflineDb> {
   return cache;
 }
 
-/** Test hook: forget the in-memory copy (does not touch storage). */
 export function _resetCache(): void {
   cache = null;
   initPromise = null;
 }
 
-// --- seed ------------------------------------------------------------------
 
 const GOLD = 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&q=80';
 

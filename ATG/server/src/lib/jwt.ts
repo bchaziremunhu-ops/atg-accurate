@@ -8,10 +8,6 @@ export interface JwtPayload {
   isVip: boolean;
 }
 
-/**
- * Re-signing a *verified* token must not carry over its timing claims —
- * `jwt.sign` rejects a payload that already has `exp`/`iat`.
- */
 function claims(payload: JwtPayload): JwtPayload {
   return { sub: payload.sub, role: payload.role, isVip: payload.isVip };
 }
@@ -21,8 +17,6 @@ export function signAccessToken(payload: JwtPayload): string {
 }
 
 export function signRefreshToken(payload: JwtPayload): string {
-  // `jti` makes every refresh token unique even for the same user/payload in
-  // the same second — without it rotation can mint a byte-identical token.
   return jwt.sign({ ...claims(payload), jti: crypto.randomUUID() }, env.jwtRefreshSecret, {
     expiresIn: env.refreshTokenTtl,
   } as jwt.SignOptions);

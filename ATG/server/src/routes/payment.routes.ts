@@ -9,7 +9,6 @@ import { HttpError } from '../middleware/error.js';
 
 export const paymentRouter = Router();
 
-// ---- Public: payment configuration for the client ----
 paymentRouter.get(
   '/config',
   asyncHandler(async (_req, res) => {
@@ -35,7 +34,6 @@ paymentRouter.get(
   }),
 );
 
-// ---- Receipts (issued automatically once a purchase is PAID) ----
 paymentRouter.get(
   '/receipts',
   requireAuth,
@@ -63,7 +61,6 @@ paymentRouter.get(
   }),
 );
 
-// ---- Order status ----
 paymentRouter.get(
   '/orders/:id',
   requireAuth,
@@ -77,7 +74,6 @@ paymentRouter.get(
   }),
 );
 
-// ---- Refunds (user side) ----
 paymentRouter.get(
   '/refunds',
   requireAuth,
@@ -104,15 +100,10 @@ paymentRouter.post(
 const checkoutSchema = z.object({
   itemType: z.enum(['COURSE', 'RESOURCE', 'SUBSCRIPTION']),
   itemId: z.string(),
-  // Accepted for backward compatibility with older clients.
   method: z.string().optional(),
   gateway: z.string().optional(),
 });
 
-/**
- * Free purchases can be completed immediately. Paid purchases are disabled
- * until a payment provider is configured.
- */
 paymentRouter.post(
   '/checkout',
   requireAuth,
@@ -134,7 +125,6 @@ paymentRouter.post(
       itemTitle = resource.title;
       amount = 9.99;
     } else {
-      // Subscription: prices/durations come from the database (Setting-backed).
       const plan = await resolvePlan(!data.itemId || data.itemId === 'VIP_MONTHLY' ? undefined : data.itemId);
       itemTitle = plan.title;
       amount = plan.price;
@@ -142,7 +132,6 @@ paymentRouter.post(
     }
 
     if (amount <= 0) {
-      // Free item — no payment required.
       const purchase = await prisma.purchase.create({
         data: {
           userId: req.user!.id,

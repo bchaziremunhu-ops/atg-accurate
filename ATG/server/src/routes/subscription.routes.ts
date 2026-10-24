@@ -31,7 +31,6 @@ subscriptionRouter.get(
   }),
 );
 
-/** Plans (prices/durations live in the database — Setting-backed). */
 subscriptionRouter.get(
   '/plans',
   asyncHandler(async (_req, res) => {
@@ -52,10 +51,6 @@ subscriptionRouter.post(
   }),
 );
 
-/**
- * Paid subscription renewals are unavailable until a payment provider is
- * configured.
- */
 subscriptionRouter.post(
   '/renew',
   asyncHandler(async (req, res) => {

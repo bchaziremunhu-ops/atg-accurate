@@ -1,7 +1,3 @@
-/**
- * International phone-number normalisation shared by the app and its
- * optional offline/demo mode; mirrors `server/src/lib/phone.ts`.
- */
 import { COUNTRIES, findCountry, type CountryOption } from './countries';
 
 export interface NormalizedPhone {
@@ -26,9 +22,6 @@ export function normalizePhone(raw: string, countryHint?: string | null): Normal
   } else {
     const country: CountryOption | undefined = findCountry(countryHint);
     if (country) {
-      // A number that already carries the dial code (typed with or without
-      // '+') wins over the national interpretation — `26377…` with a Zimbabwe
-      // hint must normalise to +26377…, not +263+26377….
       if (national.startsWith(country.dial) && national.length >= 8) {
         e164 = `+${national}`;
       } else {

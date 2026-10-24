@@ -6,17 +6,6 @@ import { useToast } from '../components/Toast';
 import { apiError } from '../lib/api';
 import { authApi } from '../lib/endpoints';
 
-/**
- * Account recovery — no SMS, no email, no OTP.
- *
- * Three steps, all verified server-side:
- *   1. phone number
- *   2. full legal name + date of birth  →  reveals the security question
- *   3. security answer + new password
- * The server never tells the client whether an account exists until the
- * personal details check out, so this page always shows generic errors for
- * failed checks and only renders the question after step 2 succeeds.
- */
 type Step = 'phone' | 'identity' | 'reset' | 'done';
 
 export default function ForgotPassword() {

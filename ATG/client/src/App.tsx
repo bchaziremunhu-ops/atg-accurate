@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { AdminRoute, ProtectedRoute } from './components/guards';
 import { Splash } from './components/Splash';
-import { useAuth } from './store/auth';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -43,9 +42,6 @@ function NotFound() {
 }
 
 export default function App() {
-  const { loading } = useAuth();
-  if (loading) return <Splash />;
-
   return (
     <Suspense fallback={<Splash />}>
       <Routes>

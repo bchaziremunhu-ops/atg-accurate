@@ -1,25 +1,6 @@
 import crypto from 'node:crypto';
 import { env, integrations } from '../../config/env.js';
 
-/**
- * Broker funding adapter layer (Deriv / Weltrade).
- *
- * Design rules — deliberately strict:
- *
- *  1. Every gateway is DISABLED until real credentials AND an endpoint path are
- *     configured. Nothing is guessed: the base URL, path, auth header and
- *     webhook signature header all come from the environment, so the operator
- *     maps this layer onto the broker's *documented* API instead of us
- *     inventing one.
- *  2. An adapter can NEVER return COMPLETED. A 2xx from a gateway only proves
- *     the request was accepted, not that money moved. COMPLETED is reserved for
- *     a signature-verified provider webhook or a recorded reconciliation.
- *  3. When a gateway is not ready, requests fall through to the `manual`
- *     adapter: the request is stored, labelled "manual processing" and settled
- *     by an administrator after real-world confirmation.
- *  4. Webhook signatures are verified with timing-safe HMAC comparison. An
- *     unsigned/unverifiable payload is rejected — it can never move money.
- */
 
 export const BROKERS = ['DERIV', 'WELTRADE'] as const;
 export type Broker = (typeof BROKERS)[number];
@@ -49,7 +30,6 @@ export interface BrokerAdapterRequest {
 
 export interface BrokerAdapterResult {
   provider: string;
-  /** PENDING (queued for review) or PROCESSING (accepted by the gateway). Never COMPLETED. */
   status: 'PENDING' | 'PROCESSING';
   providerRef?: string | null;
   instructions?: string;
@@ -57,12 +37,9 @@ export interface BrokerAdapterResult {
 }
 
 export interface BrokerAdapter {
-  /** Adapter id: `manual`, `deriv` or `weltrade`. */
   name: string;
   kind: 'manual' | 'automated';
-  /** True when the gateway can actually be called (creds + endpoint paths). */
   configured: boolean;
-  /** Human readable reason a gateway is not usable (null when it is). */
   reason: string | null;
   createFundingRequest(req: BrokerAdapterRequest): Promise<BrokerAdapterResult>;
 }
@@ -71,9 +48,7 @@ export interface GatewayDescriptor {
   broker: Broker;
   name: string;
   kind: 'manual' | 'automated';
-  /** Credentials + webhook secret are present. */
   configured: boolean;
-  /** configured AND every endpoint path is mapped — i.e. requests will be routed here. */
   ready: boolean;
   reason: string | null;
 }
@@ -126,7 +101,6 @@ function readBrokerConfig(broker: Broker): BrokerConfig {
   };
 }
 
-/** Why a gateway cannot be used yet — null when it is fully usable. */
 export function gatewayReason(broker: Broker): string | null {
   const cfg = readBrokerConfig(broker);
   if (!cfg.apiKey && !cfg.apiSecret) return 'No API credentials configured.';
@@ -154,14 +128,10 @@ export function listFundingGateways(): GatewayDescriptor[] {
   });
 }
 
-/** True only when this broker's requests are actually routed to a live gateway. */
 export function gatewayReady(broker: Broker): boolean {
   return gatewayReason(broker) === null && env.brokerFundingProvider !== 'manual';
 }
 
-// ---------------------------------------------------------------------------
-// Manual adapter — the default. Records the request, never settles anything.
-// ---------------------------------------------------------------------------
 
 const manualAdapter: BrokerAdapter = {
   name: 'manual',
@@ -194,10 +164,6 @@ const manualAdapter: BrokerAdapter = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Generic HTTP gateway — used only when the operator has mapped the broker's
-// documented endpoints. Never guesses a path, never reports success.
-// ---------------------------------------------------------------------------
 
 function createHttpAdapter(cfg: BrokerConfig, reason: string | null): BrokerAdapter {
   const brokerName = cfg.broker === 'DERIV' ? 'Deriv' : 'Weltrade';
@@ -209,7 +175,6 @@ function createHttpAdapter(cfg: BrokerConfig, reason: string | null): BrokerAdap
     async createFundingRequest(req) {
       const path = req.direction === 'DEPOSIT' ? cfg.depositPath : cfg.withdrawPath;
       if (reason || !path) {
-        // Defensive: the gateway must never be reachable without full config.
         return manualAdapter.createFundingRequest(req);
       }
       const url = `${cfg.baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
@@ -218,7 +183,6 @@ function createHttpAdapter(cfg: BrokerConfig, reason: string | null): BrokerAdap
         'content-type': 'application/json',
         accept: 'application/json',
         [cfg.authHeader]: cfg.authScheme ? `${cfg.authScheme} ${token}` : token,
-        // Idempotency: the gateway must be able to reject a replayed request.
         'X-Idempotency-Key': req.reference,
         'X-ATG-Reference': req.reference,
       };
@@ -273,9 +237,6 @@ function createHttpAdapter(cfg: BrokerConfig, reason: string | null): BrokerAdap
         (typeof body.transaction_id === 'string' && body.transaction_id) ||
         null;
 
-      // A 2xx only means the request was ACCEPTED. It is not proof that money
-      // moved, so the transaction stops at PROCESSING and still needs a
-      // verified webhook (or a reconciliation) before it can be COMPLETED.
       return {
         provider: adapter.name,
         status: providerRef ? 'PROCESSING' : 'PENDING',
@@ -297,15 +258,11 @@ export function describeFundingMode(broker: Broker): 'manual' | 'automated' {
   return gatewayReady(broker) ? 'automated' : 'manual';
 }
 
-// ---------------------------------------------------------------------------
-// Webhook verification
-// ---------------------------------------------------------------------------
 
 export interface VerifiedWebhookEvent {
   broker: Broker;
   eventId: string;
   reference: string;
-  /** settlement outcome asserted by the provider */
   outcome: 'COMPLETED' | 'FAILED';
   providerRef: string | null;
   reason: string | null;
@@ -325,17 +282,6 @@ function safeCompare(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ab, bb);
 }
 
-/**
- * Verifies a broker callback.
- *
- * Supported signatures (both are standard, broker-agnostic constructions):
- *   - raw hex/base64 HMAC-SHA256 of the raw body in the configured header
- *   - `t=<unix>,v1=<hex>` (timestamped HMAC-SHA256 of `${t}.${body}`)
- *
- * The header NAME comes from the environment so it can be matched to the
- * broker's documented callback format. An empty webhook secret means the
- * gateway is disabled and every callback is rejected.
- */
 export function verifyBrokerWebhook(broker: Broker, rawBody: Buffer, signatureHeader: string | undefined): VerifiedWebhookEvent {
   const cfg = readBrokerConfig(broker);
   if (!cfg.webhookSecret) {

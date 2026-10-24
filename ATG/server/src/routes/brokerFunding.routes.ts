@@ -33,13 +33,6 @@ import {
 } from '../services/brokerFunding/index.js';
 import { brokerPatchSchema, updateBrokerSettings, getBrokerSettings } from '../lib/settings.js';
 
-/**
- * Broker funding — customer + admin API.
- *
- * This module moves money in and out of a Deriv or Weltrade ACCOUNT. It never
- * touches `Wallet`/`Transaction`: broker balances and the ATG wallet (courses,
- * VIP subscriptions) are deliberately separate ledgers.
- */
 
 export const brokerRouter = Router();
 brokerRouter.use(requireAuth);
@@ -57,9 +50,6 @@ const METHOD_ID: Record<string, string> = {
   CASHSMILE: 'cashsmile',
 };
 
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
 
 function brokerLabel(broker: string): string {
   return broker === 'DERIV' ? 'Deriv' : 'Weltrade';
@@ -111,7 +101,6 @@ function buildWhere(query: ListQuery, direction?: 'DEPOSIT' | 'WITHDRAWAL') {
   return where;
 }
 
-/** Customer-facing shape: their own destination in full, no internal notes. */
 function toCustomerView(tx: {
   id: string;
   direction: string;
@@ -161,7 +150,6 @@ function toCustomerView(tx: {
   };
 }
 
-/** Admin list shape: destination masked — full value only on the detail view. */
 function toAdminListView(tx: {
   id: string;
   direction: string;
@@ -211,9 +199,6 @@ function toAdminListView(tx: {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Customer
-// ---------------------------------------------------------------------------
 
 brokerRouter.get(
   '/config',
@@ -237,8 +222,6 @@ brokerRouter.get(
   asyncHandler(async (req, res) => {
     const rows = await prisma.brokerBalance.findMany({ where: { userId: req.user!.id } });
     const byBroker = new Map(rows.map((r) => [r.broker, r]));
-    // Only verified data is ever shown. A missing row means "not available" —
-    // the API never invents a balance.
     const balances = BROKERS.map((broker) => {
       const row = byBroker.get(broker);
       const verified = Boolean(row?.verifiedAt);
@@ -293,8 +276,6 @@ brokerRouter.post(
       data.idempotencyKey ||
       `auto-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    // Idempotency: a replayed submit returns the original request instead of
-    // creating a second one.
     const existing = await prisma.brokerTransaction.findFirst({ where: { userId: req.user!.id, idempotencyKey } });
     if (existing) {
       return res.status(200).json({ transaction: existing, duplicate: true, mode: existing.provider === 'manual' ? 'manual' : 'automated' });
@@ -320,7 +301,6 @@ brokerRouter.post(
     });
 
     const status = result.status === 'PROCESSING' ? 'PROCESSING' : 'PENDING';
-    // Fee is snapshotted at creation so later settings changes never rewrite history.
     const feeAmount = depositFee(data.amount, limits.feePct);
     const tx = await prisma.brokerTransaction.create({
       data: {
@@ -452,7 +432,6 @@ brokerRouter.post(
       return res.status(200).json({ transaction: existing, duplicate: true, mode: existing.provider === 'manual' ? 'manual' : 'automated' });
     }
 
-    // Duplicate guard: an identical open withdrawal is rejected outright.
     const duplicate = await prisma.brokerTransaction.findFirst({
       where: {
         userId: req.user!.id,
@@ -706,7 +685,6 @@ brokerRouter.get(
     const tx = await prisma.brokerTransaction.findUnique({ where: { id: req.params.id }, include: { audit: { orderBy: { createdAt: 'asc' } } } });
     if (!tx || tx.userId !== req.user!.id) throw new HttpError(404, 'Funding request not found');
 
-    // Internal notes and staff-only audit notes are never returned to a customer.
     const timeline = tx.audit
       .filter((a) => a.source !== 'ADMIN' || a.action !== 'NOTE')
       .map((a) => ({
@@ -715,8 +693,6 @@ brokerRouter.get(
         fromStatus: a.fromStatus,
         toStatus: a.toStatus,
         source: a.source,
-        // `adminNote` on the transaction is the customer-visible message; audit
-        // notes written by staff stay internal unless they came from a provider.
         note: a.source === 'PROVIDER' || a.source === 'CUSTOMER' ? a.note : null,
         at: a.createdAt,
       }));
@@ -725,9 +701,6 @@ brokerRouter.get(
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Admin
-// ---------------------------------------------------------------------------
 
 async function listAdmin(query: ListQuery, direction: 'DEPOSIT' | 'WITHDRAWAL') {
   const rows = await prisma.brokerTransaction.findMany({
@@ -777,9 +750,6 @@ brokerAdminRouter.get(
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Settings — limits & fee are runtime-configurable (no redeploy needed).
-// ---------------------------------------------------------------------------
 
 brokerAdminRouter.get(
   '/settings',
@@ -873,8 +843,6 @@ brokerAdminRouter.patch(
 
     const actor = { id: req.user!.id, role: 'ADMIN' as const, name: req.user!.name };
 
-    // `start_processing` on a withdrawal submits the payout to the gateway.
-    // The gateway only ever reports PROCESSING — never COMPLETED.
     let providerRef = data.providerRef ?? null;
     let mode = tx.provider;
     if (data.action === 'start_processing' && tx.direction === 'WITHDRAWAL') {
@@ -892,7 +860,6 @@ brokerAdminRouter.patch(
       providerRef = result.providerRef ?? providerRef;
       mode = result.provider;
       if (result.status === 'PENDING') {
-        // Gateway not ready: keep the request in the manual queue and say so.
         await recordAudit({
           transactionId: tx.id,
           action: 'MANUAL_PROCESSING',
@@ -1026,11 +993,6 @@ const balanceSchema = z.object({
   reference: z.string().trim().min(3).max(120),
 });
 
-/**
- * Records a VERIFIED broker balance (a provider callback or an admin
- * reconciliation). This is the only way a balance becomes visible to a
- * customer — nothing is ever estimated.
- */
 brokerAdminRouter.post(
   '/balances',
   asyncHandler(async (req, res) => {
@@ -1080,9 +1042,6 @@ brokerAdminRouter.post(
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Provider webhook (raw body — registered before express.json() in app.ts)
-// ---------------------------------------------------------------------------
 
 export async function brokerWebhookHandler(req: Request, res: Response) {
   const broker = String(req.params.broker ?? '').toUpperCase() as Broker;
@@ -1099,7 +1058,6 @@ export async function brokerWebhookHandler(req: Request, res: Response) {
     return res.status(400).json({ error: message });
   }
 
-  // Replay protection: (provider, eventId) is unique.
   const provider = broker.toLowerCase();
   const replayed = await prisma.brokerAuditLog.findFirst({ where: { provider, eventId: event.eventId } });
   if (replayed) return res.json({ received: true, duplicate: true });
@@ -1112,9 +1070,6 @@ export async function brokerWebhookHandler(req: Request, res: Response) {
 
   try {
     if (event.outcome === 'COMPLETED') {
-      // A withdrawal may only settle automatically once an administrator has
-      // approved it AND the payout has been submitted (PROCESSING). Anything
-      // else is held for review — an admin never gets bypassed.
       if (tx.direction === 'WITHDRAWAL' && tx.status !== 'PROCESSING') {
         await recordAudit({
           transactionId: tx.id,
@@ -1136,8 +1091,6 @@ export async function brokerWebhookHandler(req: Request, res: Response) {
         return res.json({ received: true, heldForReview: true, status: tx.status });
       }
 
-      // Deposits: walk the required lifecycle; every step is audited with
-      // source PROVIDER. Intermediate steps stay silent, the final one notifies.
       const advanced = await advanceTo(tx, 'COMPLETED', {
         actor,
         source: 'PROVIDER',
@@ -1174,7 +1127,6 @@ export async function brokerWebhookHandler(req: Request, res: Response) {
     });
     return res.json({ received: true, id: updated.id, status: updated.status });
   } catch (err) {
-    // A terminal/replayed transaction is not an error for the provider.
     if (err instanceof HttpError && (err.code === 'ALREADY_FINAL' || err.code === 'NOOP' || err.code === 'INVALID_TRANSITION')) {
       await recordAudit({
         transactionId: tx.id,

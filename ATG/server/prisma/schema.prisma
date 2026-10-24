@@ -1,4 +1,3 @@
-// ATG Traders - Prisma schema. MySQL is the only application database.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,7 +11,6 @@ datasource db {
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
-  // Primary login identifier for traders (digits only; null for the admin).
   phone        String?   @unique
   passwordHash String
   name         String
@@ -24,26 +22,17 @@ model User {
   isVip        Boolean   @default(false)
   vipExpiresAt DateTime?
 
-  // ---- Registration profile + account recovery ----------------------------
-  // Canonical international number (`+263771234567`). `phone` above keeps the
-  // legacy digits-only form so existing accounts still resolve; uniqueness is
-  // enforced on both columns (checked together in the registration route).
   phoneE164           String?   @unique
   nationality         String?
   dateOfBirth         DateTime?
   address             String?   @db.Text
-  // Security question is stored by id (see lib/securityQuestions.ts); only a
-  // scrypt hash of the answer is kept — never the answer itself.
   securityQuestion    String?
   securityAnswerHash  String?
   termsAcceptedAt     DateTime?
   privacyAcceptedAt   DateTime?
-  // Failed account-recovery attempts, used for temporary lockouts.
   recoveryAttempts    Int       @default(0)
   recoveryLockedUntil DateTime?
 
-  // Session store for refresh-token rotation / revocation (hashes only —
-  // the raw token is never stored server-side).
   refreshTokenHash      String?
   refreshTokenPrevHash  String?
   refreshTokenExpiresAt DateTime?
@@ -82,12 +71,9 @@ model User {
   membershipRoomAccess  MembershipRoomAccess[]
 }
 
-// Append-only audit trail for authentication and account-recovery activity.
 model SecurityEvent {
   id        String   @id @default(cuid())
   userId    String?
-  // Attempted / owned number in E.164. Kept separately from `userId` so
-  // failed attempts against an unknown number can still be audited.
   phoneE164 String?
   type      String // REGISTER | LOGIN_* | RECOVERY_* | PASSWORD_*
   ip        String?
@@ -543,11 +529,6 @@ model Certificate {
   issuedAt DateTime @default(now())
 }
 
-// ---------------------------------------------------------------------------
-// Broker funding (deposits INTO / withdrawals OUT OF a Deriv or Weltrade
-// account).  Deliberately a separate ledger from Wallet/Transaction: money that
-// funds a broker account is never the same money as a course/VIP purchase.
-// ---------------------------------------------------------------------------
 
 model BrokerTransaction {
   id     String @id @default(cuid())
@@ -560,20 +541,15 @@ model BrokerTransaction {
   currency  String @default("USD")
   method    String // ECOCASH | ONEMONEY | INNBUCKS | CASHSMILE | BANK_TRANSFER
 
-  // Admin fee snapshotted at creation time (deposits only). Stored per row so
-  // later settings changes never rewrite history.
   feePct    Float @default(0)
   feeAmount Float @default(0)
 
   status String @default("PENDING")
-  // PENDING | UNDER_REVIEW | APPROVED | PROCESSING | COMPLETED | REJECTED | FAILED
 
   reference      String @unique // ATG-BD-xxxx / ATG-BW-xxxx (shown to the customer)
   idempotencyKey String @unique // client-supplied or server-generated; blocks double submits
 
-  // Reference details supplied by the customer (e.g. EcoCash txn id, wallet no.)
   paymentReference  String?
-  // Withdrawal destination — masked copy kept for list views (sensitive data).
   destination       String? @db.Text
   destinationMasked String? @db.Text
   destinationType   String? // MOBILE_WALLET | BANK_ACCOUNT | BROKER_ACCOUNT
@@ -601,8 +577,6 @@ model BrokerTransaction {
   @@index([status, createdAt])
 }
 
-// Immutable financial audit trail. Rows are only ever inserted — never updated
-// or deleted. `provider`+`eventId` makes replayed webhooks idempotent.
 model BrokerAuditLog {
   id            String             @id @default(cuid())
   transactionId String?
@@ -629,8 +603,6 @@ model BrokerAuditLog {
   @@index([action, createdAt])
 }
 
-// Verified broker-account balances. A row is only ever shown to the customer
-// once `verifiedAt` is set (provider callback or an admin reconciliation).
 model BrokerBalance {
   id           String    @id @default(cuid())
   userId       String
@@ -649,9 +621,6 @@ model BrokerBalance {
   @@index([broker, verifiedAt])
 }
 
-// Key/value store for runtime-configurable behaviour (broker limits, fees, ...).
-// Values are JSON strings; the schema for each key lives in lib/settings.ts.
-// Env vars provide the defaults; anything stored here overrides them.
 model Setting {
   key         String   @id
   value       String   @db.LongText
@@ -660,10 +629,6 @@ model Setting {
   updatedAt   DateTime @updatedAt
 }
 
-// ---------------------------------------------------------------------------
-// Purchase records and audit data are separate from broker-funding
-// transactions: they represent courses, resources and memberships.
-// ---------------------------------------------------------------------------
 
 model Payment {
   id         String   @id @default(cuid())
@@ -671,12 +636,10 @@ model Payment {
   purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   userId     String
 
-  // Merchant reference we generated (matches Purchase.providerRef).
   reference              String  @unique
   providerTransactionRef String? @unique @map("paynowReference")
   providerPollUrl        String? @map("pollUrl") @db.Text
 
-  // CREATED | SENT | AWAITING_PAYMENT | PAID | FAILED | CANCELLED | DISPUTED | REFUNDED
   status   String  @default("CREATED")
   amount   Decimal @db.Decimal(12, 2)
   currency String  @default("USD")
@@ -694,7 +657,6 @@ model Payment {
   @@index([userId])
 }
 
-// Append-only trail of provider status events.
 model PaymentEvent {
   id         String   @id @default(cuid())
   paymentId  String?
@@ -742,10 +704,8 @@ model Refund {
   amount        Decimal   @db.Decimal(12, 2)
   currency      String    @default("USD")
   reason        String    @db.LongText
-  // REQUESTED | APPROVED | REJECTED | COMPLETED | FAILED
   status        String    @default("REQUESTED")
   adminNote     String?   @db.Text
-  // Provider reference recorded when the refund is completed.
   providerRef   String?
   requestedById String?
   processedById String?
@@ -774,12 +734,6 @@ model PaymentAuditLog {
   @@index([action, createdAt])
 }
 
-// ---------------------------------------------------------------------------
-// Broker ACCOUNT registration (as opposed to money movement above).  A member
-// submits the client id their broker issued them; an administrator then
-// verifies or rejects it.  Submitting a client id never grants anything on its
-// own — only an admin (or a signed provider callback) changes `status`.
-// ---------------------------------------------------------------------------
 
 model BrokerAccount {
   id       String @id @default(cuid())
@@ -788,7 +742,6 @@ model BrokerAccount {
   broker   String @default("WELTRADE") // DERIV | WELTRADE
   clientId String
 
-  // PENDING | VERIFIED | REJECTED  (never auto-promoted)
   status       String  @default("PENDING")
   rejectReason String? @db.LongText
 
@@ -804,8 +757,6 @@ model BrokerAccount {
   @@index([status, createdAt])
 }
 
-// Append-only history of a BrokerAccount's lifecycle. Rows are inserted, never
-// rewritten — `status` on the account is the current state, this is the trail.
 model BrokerAccountEvent {
   id        String        @id @default(cuid())
   accountId String

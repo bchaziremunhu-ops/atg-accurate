@@ -21,7 +21,6 @@ export interface AuthUser {
 }
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthUser;
@@ -29,7 +28,6 @@ declare global {
   }
 }
 
-/** Attaches req.user when a valid bearer token is present (does not reject). */
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (header?.startsWith('Bearer ')) {
@@ -98,10 +96,6 @@ export function requireRole(...roles: string[]) {
   };
 }
 
-/**
- * Enforces a content access level (FREE | PAID | VIP_DERIV | VIP_WELTRADE).
- * Admins always pass. Returns 402 so the client can show an upgrade prompt.
- */
 export function requireAccess(level: AccessLevel) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) return res.status(401).json({ error: 'Authentication required' });
@@ -112,7 +106,6 @@ export function requireAccess(level: AccessLevel) {
   };
 }
 
-/** Requires any VIP membership (Deriv or Weltrade). */
 export function requireVip(req: Request, res: Response, next: NextFunction) {
   if (!req.user) return res.status(401).json({ error: 'Authentication required' });
   if (isAdmin(req.user)) return next();

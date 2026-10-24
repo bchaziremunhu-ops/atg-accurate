@@ -27,12 +27,12 @@ import {
   Wallet,
   XCircle,
 } from 'lucide-react';
-import { adminApi, brokerAdminApi, courseApi, signalApi, weltradeAccountAdminApi, type AdminUser } from '../lib/endpoints';
+import { adminApi, brokerAdminApi, courseApi, signalApi, siteSettingsApi, weltradeAccountAdminApi, type AdminUser } from '../lib/endpoints';
 import AdminPurchaseRequests from '../components/AdminPurchaseRequests';
 import { Badge, Button, Card, Chip, EmptyState, Field, Modal, Select, Spinner, Textarea } from '../components/ui';
 import { useToast } from '../components/Toast';
 import { apiError } from '../lib/api';
-import type { AccessTier, AdminBrokerAccount, AdminBrokerFunding, BrokerAuditEntry, BrokerId, Course, Group, Lesson, Membership, Resource, Signal } from '../lib/types';
+import type { AccessTier, AdminBrokerAccount, AdminBrokerFunding, BrokerAuditEntry, BrokerId, Course, Group, Lesson, Membership, Resource, Signal, SiteSettings } from '../lib/types';
 
 type AdminPurchase = {
   id: string;
@@ -64,7 +64,7 @@ type AdminTxn = {
   user?: { name: string; email: string };
 };
 
-const tabs = ['Overview', 'Signals', 'Rooms', 'Courses', 'Purchase Requests', 'Users', 'Payments', 'Transactions', 'Broker Funds', 'Weltrade Accounts', 'Broadcast'];
+const tabs = ['Overview', 'Signals', 'Rooms', 'Courses', 'Purchase Requests', 'Users', 'Payments', 'Transactions', 'Broker Funds', 'Weltrade Accounts', 'Broadcast', 'Settings'];
 
 const AUDIENCE_OPTIONS: { value: AccessTier; label: string }[] = [
   { value: 'FREE', label: 'Free — everyone' },
@@ -115,6 +115,7 @@ export default function Admin() {
       {tab === 'Broker Funds' && <BrokerFundsAdmin />}
       {tab === 'Weltrade Accounts' && <WeltradeAccountsAdmin />}
       {tab === 'Broadcast' && <BroadcastAdmin />}
+      {tab === 'Settings' && <SiteSettingsAdmin />}
       <div className="h-6" />
     </div>
   );
@@ -175,6 +176,208 @@ function Overview() {
           </Card>
         ))}
       </div>
+    </div>
+  );
+}
+
+const emptySiteSettings: SiteSettings = {
+  dashboardPosts: [],
+  support: { email: '', whatsappPhone: '' },
+};
+
+const emptyDashboardPost = { title: '', body: '', linkLabel: '', linkUrl: '' };
+
+function SiteSettingsAdmin() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const settings = useQuery({ queryKey: ['admin-site-settings'], queryFn: siteSettingsApi.admin });
+  const [form, setForm] = useState<SiteSettings>(emptySiteSettings);
+  const [postDraft, setPostDraft] = useState(emptyDashboardPost);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (settings.data) setForm(settings.data);
+  }, [settings.data]);
+
+  const save = useMutation({
+    mutationFn: (next: SiteSettings) => siteSettingsApi.save(next),
+    onSuccess: (saved) => {
+      setForm(saved);
+      qc.setQueryData(['site-settings'], saved);
+      qc.invalidateQueries({ queryKey: ['admin-site-settings'] });
+      toast('Dashboard and support settings saved.', 'success');
+    },
+    onError: (error) => toast(apiError(error), 'error'),
+  });
+
+  function publishPost() {
+    const post = {
+      id: editingPostId ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      ...postDraft,
+      enabled: true,
+    };
+    const dashboardPosts = editingPostId
+      ? form.dashboardPosts.map((item) => item.id === editingPostId ? post : item)
+      : [...form.dashboardPosts, post];
+    save.mutate({ ...form, dashboardPosts }, {
+      onSuccess: () => {
+        setPostDraft(emptyDashboardPost);
+        setEditingPostId(null);
+      },
+    });
+  }
+
+  function removePost(id: string) {
+    save.mutate({ ...form, dashboardPosts: form.dashboardPosts.filter((post) => post.id !== id) });
+  }
+
+  function togglePost(id: string, enabled: boolean) {
+    save.mutate({
+      ...form,
+      dashboardPosts: form.dashboardPosts.map((post) => post.id === id ? { ...post, enabled } : post),
+    });
+  }
+
+  if (settings.isLoading) return <Spinner className="h-6 w-6 text-gold-400" />;
+  if (settings.isError) {
+    return (
+      <Card className="flex items-center justify-between gap-3">
+        <p className="text-sm text-ink-muted">Admin settings couldn&apos;t be loaded.</p>
+        <Button size="sm" variant="outline" onClick={() => settings.refetch()}>Try again</Button>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="space-y-3">
+        <div>
+          <h2 className="section-title">Home dashboard posts</h2>
+          <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+            Create as many announcements as you need. Each published post appears on the member home dashboard. You can hide, edit, or remove posts later.
+          </p>
+        </div>
+        <Field
+          label="Post title"
+          maxLength={120}
+          value={postDraft.title}
+          onChange={(event) => setPostDraft({ ...postDraft, title: event.target.value })}
+        />
+        <Textarea
+          label="Message"
+          maxLength={3000}
+          value={postDraft.body}
+          onChange={(event) => setPostDraft({ ...postDraft, body: event.target.value })}
+          placeholder="Write your dashboard update"
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Link button text (optional)"
+            maxLength={60}
+            value={postDraft.linkLabel}
+            onChange={(event) => setPostDraft({ ...postDraft, linkLabel: event.target.value })}
+            placeholder="Join WhatsApp group"
+          />
+          <Field
+            label="Link URL (optional)"
+            value={postDraft.linkUrl}
+            onChange={(event) => setPostDraft({ ...postDraft, linkUrl: event.target.value })}
+            placeholder="chat.whatsapp.com/..."
+            hint="Paste the full link, or a domain such as chat.whatsapp.com. https:// is added automatically."
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={publishPost}
+            loading={save.isPending}
+            disabled={!postDraft.title.trim() || !postDraft.body.trim() || Boolean(postDraft.linkLabel.trim()) !== Boolean(postDraft.linkUrl.trim())}
+          >
+            {editingPostId ? 'Save post' : 'Publish post'}
+          </Button>
+          {editingPostId && (
+            <Button
+              variant="ghost"
+              onClick={() => { setEditingPostId(null); setPostDraft(emptyDashboardPost); }}
+            >
+              Cancel edit
+            </Button>
+          )}
+        </div>
+        {form.dashboardPosts.length > 0 && (
+          <div className="space-y-2 border-t border-cream-200 pt-3">
+            <h3 className="text-sm font-semibold">Posted updates ({form.dashboardPosts.length})</h3>
+            {form.dashboardPosts.map((post) => (
+              <div key={post.id} className="rounded-xl border border-cream-200 bg-cream-50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{post.title}</p>
+                      <Badge tone={post.enabled ? 'green' : 'grey'}>{post.enabled ? 'Visible' : 'Hidden'}</Badge>
+                    </div>
+                    <p className="mt-1 whitespace-pre-line text-xs text-ink-muted">{post.body}</p>
+                    {post.linkUrl && <p className="mt-1 break-all text-[11px] text-gold-800">{post.linkLabel}: {post.linkUrl}</p>}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={save.isPending}
+                      onClick={() => togglePost(post.id, !post.enabled)}
+                    >
+                      {post.enabled ? 'Hide' : 'Show'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={save.isPending}
+                      onClick={() => {
+                        setEditingPostId(post.id);
+                        setPostDraft({
+                          title: post.title,
+                          body: post.body,
+                          linkLabel: post.linkLabel,
+                          linkUrl: post.linkUrl,
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button size="sm" variant="danger" disabled={save.isPending} onClick={() => removePost(post.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="space-y-3">
+        <div>
+          <h2 className="section-title">Support contact details</h2>
+          <p className="mt-1 text-xs text-ink-muted">These values control the email and WhatsApp buttons on Help &amp; Support.</p>
+        </div>
+        <Field
+          label="Support email"
+          type="email"
+          maxLength={254}
+          value={form.support.email}
+          onChange={(event) => setForm({ ...form, support: { ...form.support, email: event.target.value } })}
+          placeholder="support@example.com"
+        />
+        <Field
+          label="WhatsApp number"
+          type="tel"
+          value={form.support.whatsappPhone}
+          onChange={(event) => setForm({ ...form, support: { ...form.support, whatsappPhone: event.target.value } })}
+          placeholder="263771234567"
+          hint="Include the country code. Enter digits only, for example 263771234567."
+        />
+        <Button onClick={() => save.mutate(form)} loading={save.isPending}>
+          Save settings
+        </Button>
+      </Card>
     </div>
   );
 }
@@ -257,7 +460,7 @@ function SignalsAdmin() {
       <Card className="space-y-3">
         <h2 className="section-title">Publish a signal</h2>
         <Field label="Pair" value={form.pair} onChange={(e) => setForm((f) => ({ ...f, pair: e.target.value }))} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select label="Market / instrument group" value={form.market} onChange={(e) => setForm((f) => ({ ...f, market: e.target.value }))}>
             {MARKETS.map((m) => (
               <option key={m}>{m}</option>
@@ -282,7 +485,7 @@ function SignalsAdmin() {
               ? 'Paid and VIP members can view this signal and receive an in-app notification.'
               : `${form.audience === 'VIP_DERIV' ? 'Deriv' : 'Weltrade'} VIP members with active room access can view it and receive an in-app notification.`}
         </p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Entry" type="number" min="0" step="any" required value={form.entry} onChange={(e) => setForm((f) => ({ ...f, entry: e.target.value }))} />
           <Field label="TP" type="number" min="0" step="any" required value={form.takeProfit} onChange={(e) => setForm((f) => ({ ...f, takeProfit: e.target.value }))} />
           <Field label="SL" type="number" min="0" step="any" required value={form.stopLoss} onChange={(e) => setForm((f) => ({ ...f, stopLoss: e.target.value }))} />
@@ -365,7 +568,7 @@ function SignalsAdmin() {
                 <option key={m}>{m}</option>
               ))}
             </Select>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Select label="Direction" value={editing.direction} onChange={(e) => setEditing({ ...editing, direction: e.target.value as 'BUY' | 'SELL' })}>
                 <option value="BUY">BUY</option>
                 <option value="SELL">SELL</option>
@@ -378,7 +581,7 @@ function SignalsAdmin() {
                 ))}
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field label="Entry" type="number" min="0" step="any" value={String(editing.entry ?? '')} onChange={(e) => setEditing({ ...editing, entry: e.target.value === '' ? null : Number(e.target.value) })} />
               <Field label="TP" type="number" min="0" step="any" value={String(editing.takeProfit ?? '')} onChange={(e) => setEditing({ ...editing, takeProfit: e.target.value === '' ? null : Number(e.target.value) })} />
               <Field label="SL" type="number" min="0" step="any" value={String(editing.stopLoss ?? '')} onChange={(e) => setEditing({ ...editing, stopLoss: e.target.value === '' ? null : Number(e.target.value) })} />
@@ -396,7 +599,7 @@ function SignalsAdmin() {
               <option value="HIT_SL">HIT_SL — stop loss hit</option>
               <option value="CANCELLED">CANCELLED — closed manually</option>
             </Select>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field
                 label="Final result %"
                 type="number"
@@ -1038,7 +1241,6 @@ function WeltradeAccountsAdmin() {
   const [reason, setReason] = useState('');
   const [linkDraft, setLinkDraft] = useState<string | null>(null);
 
-  // Debounce so typing does not fire a request per keystroke.
   useEffect(() => {
     const t = setTimeout(() => setQuery(q.trim()), 300);
     return () => clearTimeout(t);
@@ -1085,7 +1287,7 @@ function WeltradeAccountsAdmin() {
   return (
     <div className="space-y-3">
       {/* Summary + registration link */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {[
           { label: 'Pending', value: data?.pending ?? 0 },
           { label: 'Verified', value: data?.verified ?? 0 },
@@ -1302,7 +1504,6 @@ function BroadcastAdmin() {
   );
 }
 
-// ---------------------------------------------------------------- Courses
 
 type CourseFormState = {
   slug: string;
@@ -1406,10 +1607,6 @@ function CourseFields({ form, setForm }: { form: CourseFormState; setForm: SetFo
   );
 }
 
-// ---------------------------------------------------------------------------
-// Broker deposit & withdrawal management (Deriv / Weltrade) — an admin-only,
-// fully auditable ledger that is separate from the ATG wallet.
-// ---------------------------------------------------------------------------
 
 const FUNDING_LABEL: Record<string, string> = {
   PENDING: 'Pending',
@@ -1478,7 +1675,6 @@ function BrokerFundsAdmin() {
   const completingUsdt = completingTransaction?.method === 'USDT_TRC20';
   const validUsdtHash = /^[a-fA-F0-9]{64}$/.test(evidenceForm.providerRef.trim());
 
-  // Hydrate the limits form once the current values arrive.
   useEffect(() => {
     const s = settings.data?.settings;
     if (!s) return;
@@ -2296,7 +2492,7 @@ function LessonsEditor({ course, onChange }: { course: Course; onChange: () => v
           onChange={(e) => setForm((f) => ({ ...f, videoUrl: e.target.value }))}
         />
         <Textarea label="Notes (optional)" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Minutes" type="number" value={form.durationMin} onChange={(e) => setForm((f) => ({ ...f, durationMin: e.target.value }))} />
           <Field label="Order" type="number" value={form.order} onChange={(e) => setForm((f) => ({ ...f, order: e.target.value }))} />
           <label className="flex items-end gap-2 pb-2 text-sm">

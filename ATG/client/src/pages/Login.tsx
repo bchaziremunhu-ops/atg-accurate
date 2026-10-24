@@ -37,11 +37,29 @@ export default function Login() {
 
   return (
     <AuthShell>
-      <div className="card p-6">
-        <h1 className="text-2xl font-bold">Welcome back</h1>
-        <p className="muted mt-1">Sign in with your phone number or email</p>
+      <div className="card p-5 sm:p-8">
+        <div className="mb-3 flex justify-end" aria-hidden="true">
+          <svg className="h-12 w-36" viewBox="0 0 160 56" fill="none">
+            <path d="M0 12H160M0 28H160M0 44H160" stroke="#E9E0D2" strokeWidth="1" />
+            <g stroke="#BF7A28" strokeWidth="2" strokeLinecap="round">
+              <path d="M13 26V43M35 16V38M57 20V42M79 10V34M101 13V39M123 5V29M145 8V25" />
+            </g>
+            <g fill="#EFB46F" stroke="#BF7A28" strokeWidth="1">
+              <rect x="9" y="31" width="8" height="7" rx="1" />
+              <rect x="31" y="23" width="8" height="10" rx="1" />
+              <rect x="53" y="26" width="8" height="10" rx="1" />
+              <rect x="75" y="17" width="8" height="11" rx="1" />
+              <rect x="97" y="21" width="8" height="12" rx="1" />
+              <rect x="119" y="12" width="8" height="11" rx="1" />
+              <rect x="141" y="13" width="8" height="7" rx="1" />
+            </g>
+          </svg>
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gold-700">Member sign in</p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Welcome back</h1>
+        <p className="muted mt-2">Sign in with your phone number or email</p>
 
-        <form onSubmit={onSubmit} className="mt-5 space-y-4" noValidate>
+        <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
           <Field
             label="Phone number or email"
             type="text"

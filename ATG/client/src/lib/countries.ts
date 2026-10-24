@@ -1,15 +1,7 @@
-/**
- * Country list with international dial codes — mirrors the server table in
- * `server/src/lib/phone.ts`. Zimbabwe is first (home market). Used by the
- * register form to resolve a national number into E.164 and by the login /
- * recovery forms as a hint.
- */
 export interface CountryOption {
   code: string;
   name: string;
-  /** Dial code without the leading '+'. */
   dial: string;
-  /** National trunk prefix (usually '0'); '' when the country has none. */
   trunk: string;
 }
 

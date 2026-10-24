@@ -1,28 +1,11 @@
-/**
- * International phone-number normalisation.
- *
- * Traders identify themselves with a phone number, so the canonical stored
- * form must be unambiguous: E.164 (`+263771234567`). Two representations are
- * kept for compatibility:
- *   - `phoneE164` — canonical, used for lookups and duplicate prevention.
- *   - `phone`    — digits only (legacy column) so pre-existing accounts that
- *                  were stored as bare digits keep working.
- *
- * No external service is consulted: the dial plan lives here as a small
- * table of the countries the app supports.
- */
 
 export interface Country {
-  /** ISO 3166-1 alpha-2, uppercase. */
   code: string;
   name: string;
-  /** Dial code without the leading '+'. */
   dial: string;
-  /** National trunk prefix users type locally (usually '0'), may be ''. */
   trunk: string;
 }
 
-/** Supported countries. Zimbabwe is first because it is the home market. */
 export const COUNTRIES: Country[] = [
   { code: 'ZW', name: 'Zimbabwe', dial: '263', trunk: '0' },
   { code: 'ZA', name: 'South Africa', dial: '27', trunk: '0' },
@@ -77,24 +60,14 @@ export function findCountry(value: string | undefined | null): Country | undefin
 }
 
 export interface NormalizedPhone {
-  /** Canonical `+<country><number>`. */
   e164: string;
-  /** Same number without the leading '+', matching the legacy `phone` column. */
   digits: string;
 }
 
-/**
- * Normalises any user-typed number to E.164.
- * Accepts `+263…`, `00263…`, `077 123 4567` (needs `countryHint`) or a bare
- * number that already starts with a known dial code. Returns null when the
- * country code cannot be determined or the length is impossible — callers
- * must reject instead of guessing.
- */
 export function normalizePhone(raw: string, countryHint?: string | null): NormalizedPhone | null {
   const trimmed = (raw ?? '').trim();
   if (!trimmed || !/[0-9]/.test(trimmed)) return null;
 
-  // Reject obviously malformed input (letters, multiple '+', etc.).
   if (/[^0-9+\s\-().]/.test(trimmed)) return null;
   if ((trimmed.match(/\+/g) ?? []).length > 1) return null;
 
@@ -109,9 +82,6 @@ export function normalizePhone(raw: string, countryHint?: string | null): Normal
   } else {
     const country = findCountry(countryHint);
     if (country) {
-      // A number that already carries the dial code (typed with or without
-      // '+') wins over the national interpretation — `26377…` with a Zimbabwe
-      // hint must normalise to +26377…, not +263+26377….
       if (national.startsWith(country.dial) && national.length >= 8) {
         e164 = `+${national}`;
       } else {
@@ -122,8 +92,6 @@ export function normalizePhone(raw: string, countryHint?: string | null): Normal
         e164 = `+${country.dial}${local}`;
       }
     } else {
-      // No hint: accept only if the number already carries a known dial code,
-      // so we never invent a country.
       const match = COUNTRIES.filter((c) => national.startsWith(c.dial)).sort(
         (a, b) => b.dial.length - a.dial.length,
       )[0];
@@ -137,7 +105,6 @@ export function normalizePhone(raw: string, countryHint?: string | null): Normal
   return { e164, digits };
 }
 
-/** Digit form of an E.164 string (for legacy-column comparisons). */
 export function e164Digits(e164: string): string {
   return e164.replace(/\D/g, '');
 }

@@ -1,8 +1,14 @@
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, BookOpen, LifeBuoy, Mail, MessageCircle } from 'lucide-react';
-import { Card } from '../components/ui';
+import { Button, Card } from '../components/ui';
+import { siteSettingsApi } from '../lib/endpoints';
 
 export default function Support() {
+  const settings = useQuery({ queryKey: ['site-settings'], queryFn: siteSettingsApi.public });
+  const email = settings.data?.support.email;
+  const whatsappPhone = settings.data?.support.whatsappPhone;
+
   return (
     <div className="animate-rise px-4 pt-4 md:px-8 md:pt-6">
       <Link to="/profile" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-muted">
@@ -10,25 +16,55 @@ export default function Support() {
       </Link>
       <h1 className="mb-4 text-2xl font-extrabold">Help &amp; Support</h1>
 
+      {settings.isError && (
+        <Card className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-sm text-ink-muted">Support contact details couldn&apos;t be loaded.</p>
+          <Button size="sm" variant="outline" onClick={() => settings.refetch()}>Try again</Button>
+        </Card>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
-        <a href="mailto:support@atgtraders.example" className="card flex items-start gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gold-soft text-gold-600">
-            <Mail className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">Email support</p>
-            <p className="text-xs text-ink-muted">support@atgtraders.example</p>
-          </div>
-        </a>
-        <a href="https://wa.me/263000000000" target="_blank" rel="noreferrer" className="card flex items-start gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gold-soft text-gold-600">
-            <MessageCircle className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">WhatsApp</p>
-            <p className="text-xs text-ink-muted">Chat with the team</p>
-          </div>
-        </a>
+        {email ? (
+          <a href={`mailto:${email}`} className="card flex items-start gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gold-soft text-gold-600">
+              <Mail className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Email support</p>
+              <p className="text-xs text-ink-muted">{email}</p>
+            </div>
+          </a>
+        ) : (
+          <Card className="flex items-start gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-cream-100 text-ink-muted">
+              <Mail className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Email support</p>
+              <p className="text-xs text-ink-muted">Contact details are not available yet.</p>
+            </div>
+          </Card>
+        )}
+        {whatsappPhone ? (
+          <a href={`https://wa.me/${whatsappPhone}`} target="_blank" rel="noreferrer" className="card flex items-start gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gold-soft text-gold-600">
+              <MessageCircle className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">WhatsApp</p>
+              <p className="text-xs text-ink-muted">+{whatsappPhone}</p>
+            </div>
+          </a>
+        ) : (
+          <Card className="flex items-start gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-cream-100 text-ink-muted">
+              <MessageCircle className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">WhatsApp</p>
+              <p className="text-xs text-ink-muted">Contact details are not available yet.</p>
+            </div>
+          </Card>
+        )}
       </div>
 
       <h2 className="section-title mb-2 mt-6">FAQ</h2>

@@ -80,11 +80,6 @@ const depositSchema = z.object({
   currency: z.string().default('USD'),
 });
 
-/**
- * Creates a PENDING deposit. The wallet is NOT credited here — funds are
- * credited only after the provider confirms (webhook) or an administrator
- * verifies the received payment.
- */
 walletRouter.post(
   '/deposit',
   asyncHandler(async (req, res) => {
@@ -99,7 +94,6 @@ walletRouter.post(
       reference,
     });
 
-    // Only trust a COMPLETED status from a configured provider.
     const status = adapter.configured && result.status === 'COMPLETED' ? 'COMPLETED' : result.status;
 
     const txn = await prisma.transaction.create({
@@ -147,11 +141,6 @@ const withdrawSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(64).optional(),
 });
 
-/**
- * Creates a withdrawal request. Funds are HELD immediately (deducted from the
- * available balance) so a member cannot request more than they hold. An
- * administrator either pays out (COMPLETED) or rejects it (FAILED → refund).
- */
 walletRouter.post(
   '/withdraw',
   asyncHandler(async (req, res) => {

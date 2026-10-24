@@ -1,17 +1,3 @@
-/**
- * Central role / membership model.
- *
- * Roles:       USER | ADMIN
- * Memberships: FREE | PAID | VIP_DERIV | VIP_WELTRADE
- *
- * Content access levels (used by signals, rooms and courses):
- *   FREE          -> any authenticated member
- *   PAID          -> PAID, VIP_DERIV, VIP_WELTRADE (or a verified paid-course purchase)
- *   VIP_DERIV     -> VIP_DERIV only
- *   VIP_WELTRADE  -> VIP_WELTRADE only
- *
- * VIP memberships expire (vipExpiresAt); an expired VIP falls back to FREE.
- */
 
 export type Membership = 'FREE' | 'PAID' | 'VIP_DERIV' | 'VIP_WELTRADE';
 export const MEMBERSHIPS: Membership[] = ['FREE', 'PAID', 'VIP_DERIV', 'VIP_WELTRADE'];
@@ -30,7 +16,6 @@ export function isAdmin(principal: Pick<Principal, 'role'> | undefined | null): 
   return principal?.role === 'ADMIN';
 }
 
-/** Resolve the effective membership, applying VIP expiry downgrade. */
 export function effectiveMembership(input: {
   membership?: string | null;
   isVip?: boolean;
@@ -44,7 +29,6 @@ export function effectiveMembership(input: {
   return membership;
 }
 
-/** True when the principal may access content at the given level. */
 export function canAccess(principal: Principal | undefined | null, level: AccessLevel): boolean {
   if (!principal) return level === 'FREE';
   if (isAdmin(principal)) return true;
@@ -70,15 +54,10 @@ export function isVipMembership(membership: Membership): boolean {
 
 export const ALL_LEVELS: AccessLevel[] = ['FREE', 'PAID', 'VIP_DERIV', 'VIP_WELTRADE'];
 
-/** Every access level the principal may open (used to filter rooms/signals/posts). */
 export function allowedLevels(principal: Principal | undefined | null): AccessLevel[] {
   return ALL_LEVELS.filter((level) => canAccess(principal, level));
 }
 
-/**
- * Entitlement for a specific paid course: a verified purchase (status PAID) or
- * an admin grant. VIP membership alone does NOT unlock paid courses.
- */
 export async function hasVerifiedPurchase(
   db: { purchase: { findFirst: (args: unknown) => Promise<unknown> } },
   userId: string,

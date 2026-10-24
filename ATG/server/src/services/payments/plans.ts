@@ -1,14 +1,8 @@
 import { prisma } from '../../lib/prisma';
 import { HttpError } from '../../middleware/error.js';
 
-/**
- * Subscription plans for VIP memberships. Stored in Setting (`payments.plans`)
- * so prices/durations live in the database, not in code — the defaults below
- * only apply until an administrator stores a value (and if the value is
- * unreadable, we fall back rather than take the site down).
- */
 export interface SubscriptionPlan {
-  id: string; // used as Purchase.itemId
+  id: string;
   title: string;
   price: number;
   months: number;

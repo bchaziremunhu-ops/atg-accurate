@@ -4,7 +4,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// src/config -> server/.env, dist/src/config -> server/.env (one level deeper)
 const serverRoot = existsSync(path.resolve(__dirname, '../../prisma/schema.prisma'))
   ? path.resolve(__dirname, '../..')
   : path.resolve(__dirname, '../../..');
@@ -32,21 +31,16 @@ export const env = {
   accessTokenTtl: optional('ACCESS_TOKEN_TTL', '15m'),
   refreshTokenTtl: optional('REFRESH_TOKEN_TTL', '30d'),
 
-  // ---- Production / hardening ----
-  // Comma-separated CORS allowlist used in production (dev reflects any origin).
   allowedOrigins: optional('ALLOWED_ORIGINS', ''),
-  // 'false' (default) | 'true' | hop count | IP list — set when behind a reverse proxy.
   trustProxy: optional('TRUST_PROXY', 'false'),
   rateLimitWindowMs: Number(optional('RATE_LIMIT_WINDOW_MS', String(15 * 60_000))),
   rateLimitMax: Number(optional('RATE_LIMIT_MAX', '300')),
   authRateLimitMax: Number(optional('AUTH_RATE_LIMIT_MAX', '20')),
-  // Account-recovery endpoints (/api/auth/forgot/*) — deliberately stricter
-  // than general auth because they are the only password-reset path.
   recoveryRateLimitMax: Number(optional('RECOVERY_RATE_LIMIT_MAX', '10')),
-  // auto = serve client/dist whenever it exists (production build); true/false force it.
   serveClient: optional('SERVE_CLIENT', 'auto'),
   clientDistDir: optional('CLIENT_DIST', ''),
   purchaseProofDir: optional('PURCHASE_PROOF_DIR', path.resolve(serverRoot, 'private', 'purchase-proofs')),
+  avatarDir: optional('AVATAR_DIR', path.resolve(serverRoot, 'uploads', 'avatars')),
 
   stripeSecretKey: optional('STRIPE_SECRET_KEY'),
   stripeWebhookSecret: optional('STRIPE_WEBHOOK_SECRET'),
@@ -59,22 +53,17 @@ export const env = {
 
   fcmServerKey: optional('FCM_SERVER_KEY'),
 
-  // Deposits / withdrawals provider (manual by default — never auto-settles).
   paymentProvider: optional('PAYMENT_PROVIDER', 'manual'),
   paymentApiKey: optional('PAYMENT_API_KEY'),
   paymentApiSecret: optional('PAYMENT_API_SECRET'),
 
-  // Optional live market data. Disabled unless a provider + URL are configured.
   marketDataProvider: optional('MARKET_DATA_PROVIDER', 'disabled'),
   marketDataUrl: optional('MARKET_DATA_URL'),
   marketDataApiKey: optional('MARKET_DATA_API_KEY'),
 
-  // ---- Broker funding (Deposits into / withdrawals out of Deriv & Weltrade) ----
-  // Manual by default: nothing is ever marked Completed without real evidence.
   brokerFundingProvider: optional('BROKER_FUNDING_PROVIDER', 'manual'),
   brokerCurrency: optional('BROKER_CURRENCY', 'USD').toUpperCase(),
 
-  // Deriv gateway — disabled until both the API key and the webhook secret exist.
   derivApiKey: optional('DERIV_API_KEY'),
   derivApiSecret: optional('DERIV_API_SECRET'),
   derivAppId: optional('DERIV_APP_ID'),
@@ -87,7 +76,6 @@ export const env = {
   derivFundingAuthScheme: optional('DERIV_FUNDING_AUTH_SCHEME', 'Bearer'),
   derivWebhookHeader: optional('DERIV_WEBHOOK_HEADER', 'X-ATG-Signature'),
 
-  // Weltrade gateway — disabled until both the API key and the webhook secret exist.
   weltradeApiKey: optional('WELTRADE_API_KEY'),
   weltradeApiSecret: optional('WELTRADE_API_SECRET'),
   weltradeBaseUrl: optional('WELTRADE_BASE_URL', 'https://api.weltrade.com'),
@@ -99,31 +87,20 @@ export const env = {
   weltradeFundingAuthScheme: optional('WELTRADE_FUNDING_AUTH_SCHEME', 'Bearer'),
   weltradeWebhookHeader: optional('WELTRADE_WEBHOOK_HEADER', 'X-ATG-Signature'),
 
-  // Official Weltrade sign-up page the dashboard card links to. Deliberately
-  // empty by default: the app must never invent a referral URL or imply a
-  // partnership, so an operator sets this to the link they are entitled to use.
   weltradeRegisterUrl: optional('WELTRADE_REGISTER_URL'),
 
-  // Server-side limits (all enforced on every request, never only on the client).
   brokerDepositMin: Number(optional('BROKER_DEPOSIT_MIN', '10')),
   brokerDepositMax: Number(optional('BROKER_DEPOSIT_MAX', '50000')),
   brokerWithdrawalMin: Number(optional('BROKER_WITHDRAWAL_MIN', '10')),
   brokerWithdrawalMax: Number(optional('BROKER_WITHDRAWAL_MAX', '50000')),
   brokerWithdrawalDailyMax: Number(optional('BROKER_WITHDRAWAL_DAILY_MAX', '20000')),
   brokerPendingLimit: Number(optional('BROKER_PENDING_LIMIT', '5')),
-  // Admin fee taken on deposits (% of the requested amount). Default 0 so the
-  // app never silently charges; admins set the real rate in Admin → Broker
-  // Funds → Limits (stored in Setting, overrides this default).
   brokerDepositFeePct: Number(optional('BROKER_DEPOSIT_FEE_PCT', '0')),
 
-  // ATG wallet withdrawals are manually paid by an administrator until a
-  // real payout provider is configured. Fee defaults to zero and is snapshotted
-  // on each request.
   walletWithdrawalMin: Number(optional('WALLET_WITHDRAWAL_MIN', '1')),
   walletWithdrawalMax: Number(optional('WALLET_WITHDRAWAL_MAX', '50000')),
   walletWithdrawalFeePct: Number(optional('WALLET_WITHDRAWAL_FEE_PCT', '0')),
 
-  // Free courses are capped so the paid catalogue stays the main offer.
   maxFreeCourses: Number(optional('MAX_FREE_COURSES', '5')),
 };
 
@@ -139,8 +116,6 @@ export const integrations = {
   payments: env.paymentProvider !== 'manual' && Boolean(env.paymentApiKey),
   marketData: env.marketDataProvider !== 'disabled' && Boolean(env.marketDataUrl),
 
-  // A broker gateway is only "live" when BOTH a credential set and a webhook
-  // secret are present — otherwise requests run through manual admin review.
   derivFunding: Boolean(env.derivApiKey && env.derivApiSecret && env.derivWebhookSecret),
   weltradeFunding: Boolean(env.weltradeApiKey && env.weltradeApiSecret && env.weltradeWebhookSecret),
 };
@@ -149,7 +124,6 @@ export function isProduction(): boolean {
   return env.nodeEnv === 'production';
 }
 
-/** CORS `origin` option: allowlist in production, reflect any origin in dev. */
 export function corsOrigin(): true | string[] {
   if (!isProduction()) return true;
   const list = env.allowedOrigins
@@ -170,10 +144,6 @@ const WEAK_SECRETS = new Set([
   'atg-local-dev-refresh-change-me',
 ]);
 
-/**
- * Refuses to boot production with development/default secrets. Called once at
- * startup — a weak JWT secret lets anyone mint an admin token.
- */
 export function assertProductionEnv(): void {
   if (!isProduction()) return;
   const problems: string[] = [];

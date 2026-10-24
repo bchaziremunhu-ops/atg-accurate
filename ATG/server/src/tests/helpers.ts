@@ -1,9 +1,3 @@
-/**
- * Shared helper for tests that need to register a user through the real
- * /auth/register endpoint. Builds a payload that satisfies every required
- * field of the new registration schema (legal name, country, nationality,
- * phone with country code, DOB, security question + answer, T&C acceptance).
- */
 export function assertIsolatedTestDatabase(): void {
   let databaseName: string;
   try {
@@ -46,7 +40,6 @@ export interface RegisterOverrides {
   acceptPrivacy?: boolean;
 }
 
-/** A complete, valid registration payload. Override only what a test needs. */
 export function registerPayload(overrides: RegisterOverrides = {}) {
   const phone = overrides.phone ?? uniquePhone();
   const password = overrides.password ?? 'Password123!';

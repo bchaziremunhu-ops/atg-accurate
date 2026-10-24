@@ -1,9 +1,6 @@
 import { BrandLogo } from './BrandLogo';
 import { ChartDecor } from './ChartDecor';
 
-/**
- * Branded splash screen shown for ~3 seconds on first load (see App.tsx).
- */
 export function Splash() {
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-cream-50 pb-44">

@@ -16,6 +16,11 @@ const AUDIENCE_BADGE: Record<string, { label: string; className: string }> = {
   VIP_WELTRADE: { label: 'WELTRADE VIP', className: 'bg-ink px-2 py-0.5 text-gold-200' },
 };
 
+const ROOM_LABEL: Record<string, string> = {
+  VIP_DERIV: 'Deriv VIP room',
+  VIP_WELTRADE: 'Weltrade VIP room',
+};
+
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.max(1, Math.round(diff / 60000));
@@ -27,8 +32,8 @@ function timeAgo(iso: string) {
 export default function Signals() {
   const { user } = useAuth();
   const [filter, setFilter] = useState('All Signals');
-  const signals = useQuery({ queryKey: ['signals', 'all'], queryFn: () => signalApi.list() });
-  const access = useQuery({ queryKey: ['rooms-access'], queryFn: signalApi.roomsAccess });
+  const signals = useQuery({ queryKey: ['signals', 'all'], queryFn: () => signalApi.list(), refetchOnMount: 'always' });
+  const access = useQuery({ queryKey: ['rooms-access'], queryFn: signalApi.roomsAccess, refetchOnMount: 'always' });
 
   const filtered = useMemo(() => {
     const list = signals.data ?? [];
@@ -62,8 +67,11 @@ export default function Signals() {
 
       {lockedRooms.length > 0 && (
         <Link to="/profile/subscription" className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-white">
-          <span className="text-sm font-semibold">Unlock {lockedRooms.join(' & ')} signals — full entry, TP & SL</span>
-          <Crown className="h-5 w-5" />
+          <span>
+            <span className="block text-sm font-semibold">Buy VIP access to unlock {lockedRooms.join(' & ')}</span>
+            <span className="mt-1 block text-xs text-white/70">See membership prices, included signal rooms, and access duration.</span>
+          </span>
+          <Crown className="h-5 w-5 shrink-0" />
         </Link>
       )}
 
@@ -111,19 +119,34 @@ export default function Signals() {
                     <Badge tone={s.direction === 'BUY' ? 'green' : 'red'}>{s.direction}</Badge>
                   </div>
                 </div>
+                {s.author && (
+                  <div className="mt-3 flex items-center gap-2 border-t border-cream-100 pt-3">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-ink text-[9px] font-bold text-gold-200">
+                      {s.author.avatarUrl ? (
+                        <img src={s.author.avatarUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        s.author.name.slice(0, 2).toUpperCase()
+                      )}
+                    </span>
+                    <span className="text-xs text-ink-muted">
+                      Shared by <span className="font-semibold text-ink-soft">{s.author.name}</span>
+                      {s.author.role === 'ADMIN' ? ' · ATG Admin' : ''}
+                    </span>
+                  </div>
+                )}
 
                 {s.locked ? (
                   <div className="mt-3 flex items-center justify-between rounded-xl bg-cream-100 px-3 py-3">
                     <span className="flex items-center gap-2 text-xs text-ink-muted">
-                      <Lock className="h-4 w-4" /> Members only
+                      <Lock className="h-4 w-4" /> Included with {ROOM_LABEL[s.audience] ?? 'membership'} access
                     </span>
                     <Link to="/profile/subscription" className="text-xs font-bold text-gold-600">
-                      Upgrade
+                      View plans &amp; prices
                     </Link>
                   </div>
                 ) : (
                   <>
-                    <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-cream-200 bg-cream-100 p-3">
+                    <div className="mt-3 grid grid-cols-1 gap-2 rounded-xl border border-cream-200 bg-cream-100 p-3 min-[480px]:grid-cols-3">
                       {[
                         { label: 'Entry', value: s.entry },
                         { label: 'Take Profit', value: s.takeProfit },

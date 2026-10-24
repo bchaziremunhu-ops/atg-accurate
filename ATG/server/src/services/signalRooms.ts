@@ -1,14 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import type { AccessLevel } from '../lib/permissions.js';
 
-/**
- * When an administrator publishes or updates a signal, a matching post is
- * automatically mirrored into the correct room (Free / Paid / Deriv VIP /
- * Weltrade VIP). The room's own access tier then governs who can see it, so a
- * member only ever sees a signal that their role + subscription allows.
- *
- * Nothing here invents data — the post is a formatted copy of the real signal.
- */
 
 type SignalLike = {
   id: string;
@@ -47,7 +39,6 @@ export function signalSummary(s: SignalLike): string {
   return lines.join('\n');
 }
 
-/** The room that a given audience belongs to (or null when none exists). */
 async function findRoomForAudience(audience: AccessLevel) {
   return prisma.group.findFirst({
     where: { accessTier: audience },
@@ -60,13 +51,12 @@ async function fallbackAuthorId(): Promise<string | null> {
   return admin?.id ?? null;
 }
 
-/** Creates or refreshes the mirrored room post for a signal. */
 export async function syncSignalRoomPost(signalId: string): Promise<void> {
   const signal = await prisma.signal.findUnique({ where: { id: signalId } });
   if (!signal) return;
 
   const room = await findRoomForAudience(signal.audience as AccessLevel);
-  if (!room) return; // no room for this audience yet — nothing to mirror
+  if (!room) throw new Error(`No ${signal.audience} signal room is configured.`);
 
   const body = signalSummary(signal);
 
@@ -82,7 +72,7 @@ export async function syncSignalRoomPost(signalId: string): Promise<void> {
   }
 
   const authorId = signal.authorId ?? (await fallbackAuthorId());
-  if (!authorId) return;
+  if (!authorId) throw new Error('No signal author or administrator is available to create the room post.');
 
   const post = await prisma.groupPost.create({
     data: { groupId: room.id, authorId, kind: 'ANALYSIS', body },
@@ -90,7 +80,6 @@ export async function syncSignalRoomPost(signalId: string): Promise<void> {
   await prisma.signal.update({ where: { id: signal.id }, data: { roomPostId: post.id } });
 }
 
-/** Removes the mirrored post when a signal is deleted. */
 export async function removeSignalRoomPost(roomPostId: string | null): Promise<void> {
   if (!roomPostId) return;
   await prisma.groupPost.delete({ where: { id: roomPostId } }).catch(() => {});

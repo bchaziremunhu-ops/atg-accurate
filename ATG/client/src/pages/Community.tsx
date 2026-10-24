@@ -303,7 +303,7 @@ function Rooms({ rooms }: { rooms: UseQueryResult<Group[], Error> }) {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">{g.name}</p>
               <p className="truncate text-xs text-ink-muted">
-                {g.canAccess ? (g.chatOpen ? 'Chat open' : 'Chat closed') : 'Members only'}
+                {g.canAccess ? (g.chatOpen ? 'Chat open' : 'Chat closed') : 'VIP membership required'}
                 {typeof g._count?.messages === 'number' ? ` · ${g._count.messages} messages` : ''}
               </p>
             </div>
@@ -313,7 +313,7 @@ function Rooms({ rooms }: { rooms: UseQueryResult<Group[], Error> }) {
               </Link>
             ) : (
               <Link to="/profile/subscription" className="flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-gold-800 transition-colors hover:bg-gold-50">
-                <Lock className="h-3 w-3" /> Unlock
+                <Lock className="h-3 w-3" /> View VIP plans
               </Link>
             )}
           </div>

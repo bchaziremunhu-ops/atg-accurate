@@ -1,16 +1,29 @@
 export type Membership = 'FREE' | 'PAID' | 'VIP_DERIV' | 'VIP_WELTRADE';
 export type AccessTier = 'FREE' | 'PAID' | 'VIP_DERIV' | 'VIP_WELTRADE';
 
+export interface SiteSettings {
+  dashboardPosts: {
+    id: string;
+    enabled: boolean;
+    title: string;
+    body: string;
+    linkLabel: string;
+    linkUrl: string;
+  }[];
+  support: {
+    email: string;
+    whatsappPhone: string;
+  };
+}
+
 export interface User {
   id: string;
   name: string;
   email: string;
   phone?: string | null;
-  /** Canonical international number (`+263771234567`). */
   phoneE164?: string | null;
   country?: string | null;
   nationality?: string | null;
-  /** ISO date string (YYYY-MM-DD) when captured at registration. */
   dateOfBirth?: string | null;
   address?: string | null;
   bio?: string | null;
@@ -24,17 +37,13 @@ export interface User {
   stats?: { courses: number; signals: number; certificates: number };
 }
 
-/** Payload for POST /auth/register — no email/phone verification required. */
 export interface RegisterInput {
   name: string;
   phone: string;
   country: string;
   nationality: string;
-  /** YYYY-MM-DD */
   dateOfBirth: string;
-  /** Optional — left empty when the user skips it. */
   address?: string;
-  /** Security question id from SECURITY_QUESTIONS. */
   securityQuestion: string;
   securityAnswer: string;
   password: string;
@@ -71,7 +80,7 @@ export interface Signal {
   publishedAt: string;
   closedAt?: string | null;
   locked?: boolean;
-  author?: { id: string; name: string; avatarUrl?: string | null };
+  author?: { id: string; name: string; avatarUrl?: string | null; role?: string };
 }
 
 export interface Lesson {
@@ -337,11 +346,6 @@ export interface PurchaseRequest {
   createdAt: string;
 }
 
-// ---------------------------------------------------------------------------
-// Broker funding — deposits into / withdrawals out of a Deriv or Weltrade
-// account. Deliberately a separate ledger from Wallet (ATG balance) and
-// Purchase (courses / VIP): the two are never mixed.
-// ---------------------------------------------------------------------------
 
 export type BrokerId = 'DERIV' | 'WELTRADE';
 
@@ -426,7 +430,6 @@ export interface BrokerBalanceView {
   verifiedAt: string | null;
 }
 
-/** Admin list row — destination is masked; the raw value only exists on detail. */
 export interface AdminBrokerFunding {
   id: string;
   direction: 'DEPOSIT' | 'WITHDRAWAL';
@@ -497,8 +500,6 @@ export interface AdminBrokerBalance {
   user?: { id: string; name: string; email: string };
 }
 
-// Runtime-configurable broker limits & fee (env provides the defaults,
-// anything stored in Setting overrides them - no redeploy needed).
 export interface BrokerSettings {
   deposit: { min: number; max: number };
   withdrawal: { min: number; max: number; dailyMax: number };
@@ -512,16 +513,12 @@ export interface BrokerSettingsView {
   currency: string;
 }
 
-// ---------------------------------------------------------------------------
-// Broker ACCOUNT registration (Weltrade). Distinct from BrokerFunding above:
-// this is the client id the member was issued, verified by an administrator.
-// ---------------------------------------------------------------------------
 
 export type BrokerAccountStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 
 export interface BrokerAccountEvent {
   id: string;
-  action: string; // SUBMITTED | UPDATED | RESUBMITTED | VERIFIED | REJECTED
+  action: string;
   fromStatus: string | null;
   toStatus: string | null;
   reason: string | null;

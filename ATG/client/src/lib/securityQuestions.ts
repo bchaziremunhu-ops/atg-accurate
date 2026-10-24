@@ -1,8 +1,3 @@
-/**
- * Account-recovery security questions — must mirror the server-owned list in
- * `server/src/lib/securityQuestions.ts` (ids are what get stored, wording is
- * rendered here for the register/recovery forms).
- */
 export interface SecurityQuestion {
   id: string;
   text: string;

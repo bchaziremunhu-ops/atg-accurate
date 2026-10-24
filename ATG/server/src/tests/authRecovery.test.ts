@@ -1,15 +1,3 @@
-/**
- * Registration + account recovery (no SMS / email / OTP).
- * Run with: npm test
- *
- * The rules this file defends:
- *  - Registration collects everything up front and requires T&C + Privacy
- *    acceptance; phones are normalised to E.164 and deduplicated.
- *  - Recovery never reveals whether an account exists (generic errors).
- *  - Every check is re-verified server-side; the frontend cannot bypass it.
- *  - Too many failures lock recovery; a reset revokes existing sessions.
- *  - Security answers are stored only as irreversible hashes.
- */
 process.env.NODE_ENV = 'test';
 
 import http from 'node:http';
@@ -60,7 +48,6 @@ async function main() {
     return { status: r.status, body };
   };
 
-  // ---- Registration --------------------------------------------------------
 
   await step('security question list is published', async () => {
     const { status, body } = await json<{ questions: { id: string; text: string }[] }>('/auth/security-questions');
@@ -128,7 +115,6 @@ async function main() {
     assert.ok(user!.termsAcceptedAt && user!.privacyAcceptedAt, 'acceptance timestamps recorded');
   });
 
-  // ---- Login by phone ------------------------------------------------------
 
   await step('login with the international number works', async () => {
     const { status } = await json<{ accessToken: string }>('/auth/login', {
@@ -146,7 +132,6 @@ async function main() {
     assert.equal(status, 200);
   });
 
-  // ---- Recovery: step 1 (phone) --------------------------------------------
 
   await step('forgot/start always succeeds, even for unknown numbers', async () => {
     const { status } = await json('/auth/forgot/start', {
@@ -164,7 +149,6 @@ async function main() {
     assert.equal(status, 200);
   });
 
-  // ---- Recovery: step 2 (identity) -----------------------------------------
 
   await step('wrong personal details get the generic error', async () => {
     const { status, body } = await json<{ error: string }>('/auth/forgot/verify', {
@@ -198,7 +182,6 @@ async function main() {
     assert.ok(!JSON.stringify(body).includes('hash'), 'never leaks stored data');
   });
 
-  // ---- Recovery: step 3 (answer + reset) -----------------------------------
 
   await step('wrong security answer is rejected generically', async () => {
     const { status, body } = await json<{ error: string }>('/auth/forgot/reset', {
@@ -270,7 +253,6 @@ async function main() {
     });
     assert.equal(reg.status, 201);
     otherToken = reg.body.accessToken;
-    // Second user's own details must not unlock the first user's account.
     const { status } = await json('/auth/forgot/reset', {
       method: 'POST',
       body: JSON.stringify({
@@ -285,10 +267,8 @@ async function main() {
     assert.equal(status, 400, 'mismatched identity cannot be mixed across accounts');
   });
 
-  // ---- Session invalidation ------------------------------------------------
 
   await step('password reset revokes existing refresh tokens', async () => {
-    // Register a throwaway user and keep its refresh token.
     const payload = registerPayload({ name: 'Session Killer' });
     testPhones.add(payload.phone);
     const reg = await json<{ refreshToken: string }>('/auth/register', {
@@ -321,7 +301,6 @@ async function main() {
     assert.equal(after.status, 401, 'reset kills every live session');
   });
 
-  // ---- Audit trail ---------------------------------------------------------
 
   await step('recovery attempts are written to the security audit log', async () => {
     const events = await prisma.securityEvent.findMany({
@@ -341,7 +320,6 @@ async function main() {
     assert.ok(!serialized.toLowerCase().includes('newpassword'), 'audit never stores passwords');
   });
 
-  // ---- Lockout -------------------------------------------------------------
 
   await step('repeated failed recovery locks the account temporarily', async () => {
     const payload = registerPayload({ name: 'Lockout Tester', securityAnswer: 'Mutare' });
@@ -358,11 +336,9 @@ async function main() {
         method: 'POST',
         body: JSON.stringify({ phone: payload.phone, fullName: 'Wrong Name', dateOfBirth: payload.dateOfBirth }),
       });
-      // First 4 failures are 400 generic; the 5th locks.
       lastStatus = status;
       if (status === 429) break;
     }
-    // After 5 failed identity checks the account must be locked (429).
     const locked = await json<{ error: string }>('/auth/forgot/verify', {
       method: 'POST',
       body: JSON.stringify({ phone: payload.phone, fullName: payload.name, dateOfBirth: payload.dateOfBirth }),
@@ -379,7 +355,6 @@ async function main() {
     }
   });
 
-  // ---- Cleanup -------------------------------------------------------------
 
   await prisma.user.deleteMany({
     where: { phoneE164: { in: [...testPhones] } },

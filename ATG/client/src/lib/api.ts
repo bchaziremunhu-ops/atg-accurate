@@ -39,11 +39,6 @@ export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// ---------------------------------------------------------------------------
-// Explicit offline/demo mode: the on-device database (src/lib/offline) serves
-// API calls only when selected with `?offline=1` or the stored mode setting.
-// Native apps otherwise use the configured shared server just like the web app.
-// ---------------------------------------------------------------------------
 
 const OFFLINE_KEY = 'atg.mode';
 
@@ -76,7 +71,6 @@ export function disableOfflineMode(): void {
   window.location.reload();
 }
 
-// In explicit offline mode, the local adapter also handles refresh requests.
 if (OFFLINE_MODE) {
   api.defaults.adapter = offlineAdapter;
   axios.defaults.adapter = offlineAdapter;

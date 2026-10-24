@@ -6,13 +6,6 @@ let socket: Socket | null = null;
 
 type Handler = (payload: never) => void;
 
-/**
- * Minimal Socket.IO stand-in for explicit offline/demo mode: there is no
- * server connection, so chat messages are written straight to the on-device
- * database and echoed back to the page, which is exactly what the server
- * would emit. Typing indicators are dropped (there is nobody else in the
- * room to notify).
- */
 class LocalSocket {
   auth: Record<string, unknown> = {};
   connected = true;
@@ -88,7 +81,6 @@ class LocalSocket {
       });
       return true;
     } catch {
-      /* never let a chat send crash the app */
       return false;
     }
   }

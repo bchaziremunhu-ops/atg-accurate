@@ -44,7 +44,6 @@ async function resolveSocketPrincipal(userId: string): Promise<SocketPrincipal |
   };
 }
 
-/** Initialises the Socket.IO realtime layer for community group chat. */
 export function initRealtime(httpServer: HttpServer) {
   const io = new IOServer(httpServer, {
     cors: { origin: corsOrigin(), credentials: true },
@@ -55,7 +54,6 @@ export function initRealtime(httpServer: HttpServer) {
     if (!token) return next(new Error('Authentication required'));
     try {
       const payload = verifyAccessToken(token);
-      // Resolve current membership from the database so expiry / grants apply live.
       const principal = await resolveSocketPrincipal(payload.sub);
       if (!principal) return next(new Error('Account not found'));
       socket.data.user = principal;

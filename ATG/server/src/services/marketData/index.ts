@@ -1,20 +1,8 @@
 import { env, integrations } from '../../config/env.js';
 
-/**
- * Live market data (OPTIONAL, DISABLED BY DEFAULT).
- *
- * Signals are published manually by an administrator — the platform never
- * invents prices, candles or results. A chart is only drawn when a real market
- * data feed is connected.
- *
- * Enable a feed by setting MARKET_DATA_PROVIDER + MARKET_DATA_URL (and
- * MARKET_DATA_API_KEY if required) in `.env`. Until then `getMarketDataProvider`
- * returns a disabled provider and the chart endpoint reports `configured: false`
- * so the UI shows an honest "not connected" state instead of fake candles.
- */
 
 export interface Candle {
-  time: number; // unix seconds
+  time: number;
   open: number;
   high: number;
   low: number;
@@ -24,7 +12,6 @@ export interface Candle {
 export interface MarketDataProvider {
   name: string;
   configured: boolean;
-  /** Returns candles, or null when the feed is unreachable. */
   getCandles(pair: string, timeframe: string, limit: number): Promise<Candle[] | null>;
 }
 
@@ -36,11 +23,6 @@ const disabledProvider: MarketDataProvider = {
   },
 };
 
-/**
- * Generic REST market-data adapter. Point MARKET_DATA_URL at an endpoint that
- * returns OHLC candles, e.g. `GET {URL}?symbol=EURUSD&interval=1h&limit=200`
- * with an array of `{ time, open, high, low, close }` objects.
- */
 function httpProvider(): MarketDataProvider {
   return {
     name: env.marketDataProvider,

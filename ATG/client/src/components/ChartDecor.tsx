@@ -1,8 +1,3 @@
-/**
- * Decorative candlestick artwork behind the splash and auth screens.
- * A pale watermark fades in from the top; richer gold candles rise from the
- * bottom edge.
- */
 export function ChartDecor() {
   return (
     <>

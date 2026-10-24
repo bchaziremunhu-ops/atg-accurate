@@ -1,8 +1,3 @@
-/**
- * Offline API router â€” every endpoint the client uses, served from the
- * on-device database (see store.ts) instead of the server when offline mode
- * is explicitly selected.
- */
 
 import type {
   BrokerFundingConfig,
@@ -52,7 +47,6 @@ class HttpError extends Error {
 }
 
 const err = (status: number, error: string) => new HttpError(status, { error });
-// Always thrown â€” never returned. Callers write `if (bad) issues('msg');`.
 const issues = (...messages: string[]): never => {
   throw new HttpError(422, { issues: messages.map((message) => ({ message })) });
 };
@@ -80,7 +74,6 @@ function route(method: string, pattern: string, handler: Handler, opts: { auth?:
   routes.push({ method, pattern, handler, auth: opts.auth ?? false, admin: opts.admin ?? false });
 }
 
-// --- auth helpers ----------------------------------------------------------
 
 function signToken(user: UserRow): string {
   const payload = btoa(JSON.stringify({ sub: user.id, role: user.role }));
@@ -141,7 +134,6 @@ function requireAdmin(ctx: Ctx): UserRow {
   return u;
 }
 
-// --- views -----------------------------------------------------------------
 
 const BROKER_LABELS: Record<string, string> = { DERIV: 'Deriv', WELTRADE: 'Weltrade' };
 const METHOD_LABELS: Record<string, string> = {
@@ -301,7 +293,6 @@ function adminBrokerView(db: ReturnType<typeof getDb>, row: BrokerTxRow) {
   };
 }
 
-// --- settings --------------------------------------------------------------
 
 function settingsView(db: ReturnType<typeof getDb>): BrokerSettingsView {
   const settings: BrokerSettings = db.brokerSettings ?? DEFAULT_BROKER_SETTINGS;
@@ -388,7 +379,6 @@ function audit(
 
 type BrokerAuditEntryTx = NonNullable<import('../types').BrokerAuditEntry['transaction']>;
 
-// --- AUTH ------------------------------------------------------------------
 
 route('POST', '/auth/register', async (ctx) => {
   const db = getDb();
@@ -480,8 +470,6 @@ route('POST', '/auth/login', async (ctx) => {
   if (isEmail) {
     user = db.users.find((u) => u.email === identifier.toLowerCase());
   } else {
-    // Same resolution order as the server: canonical E.164, then any national
-    // format that normalises to it, then the legacy digits-only column.
     const normalized = normalizePhone(identifier);
     if (normalized) {
       user = db.users.find((u) => u.phoneE164 === normalized.e164 || u.phone === normalized.digits);
@@ -505,7 +493,6 @@ route('POST', '/auth/login', async (ctx) => {
   return { user: publicUser(user), accessToken: signToken(user), refreshToken: signToken(user) };
 });
 
-// --- Account recovery (no SMS / email / OTP) — mirrors the server flow ------
 
 const RECOVERY_GENERIC =
   "We couldn't verify those details. Check the phone number, full legal name and date of birth, then try again.";
@@ -696,7 +683,6 @@ route(
   { auth: true },
 );
 
-// --- USERS -----------------------------------------------------------------
 
 route(
   'GET',
@@ -809,7 +795,6 @@ route(
   { auth: true },
 );
 
-// --- SIGNALS ---------------------------------------------------------------
 
 route(
   'GET',
@@ -984,7 +969,6 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// --- COURSES ---------------------------------------------------------------
 
 route(
   'GET',
@@ -995,7 +979,6 @@ route(
     let rows = db.courses.filter((c) => c.published || u.role === 'ADMIN');
     if (typeof ctx.query.level === 'string' && ctx.query.level) rows = rows.filter((c) => c.level === ctx.query.level);
     if (ctx.query.all !== 'true' && u.role !== 'ADMIN') {
-      // The default catalogue still lists paid courses (locked) so users can buy.
       rows = rows.filter((c) => c.published);
     }
     return rows.slice().sort((a, b) => a.order - b.order).map((c) => courseView(db, c, u));
@@ -1189,7 +1172,6 @@ route(
   { auth: true, admin: true },
 );
 
-// --- COMMUNITY -------------------------------------------------------------
 
 route(
   'GET',
@@ -1402,7 +1384,6 @@ route(
   { auth: true },
 );
 
-// --- WALLET ----------------------------------------------------------------
 
 route(
   'GET',
@@ -1529,7 +1510,6 @@ route(
   { auth: true },
 );
 
-// --- PAYMENTS --------------------------------------------------------------
 
 route(
   'GET',
@@ -1631,7 +1611,6 @@ route(
   { auth: true },
 );
 
-// --- SUBSCRIPTIONS ---------------------------------------------------------
 
 route(
   'GET',
@@ -1692,7 +1671,6 @@ route(
   { auth: true },
 );
 
-// --- NOTIFICATIONS ---------------------------------------------------------
 
 route(
   'GET',
@@ -1756,7 +1734,6 @@ route(
   { auth: true },
 );
 
-// --- ADMIN -----------------------------------------------------------------
 
 route(
   'GET',
@@ -2132,7 +2109,6 @@ route(
   { auth: true, admin: true },
 );
 
-// --- BROKER FUNDING (trader) ----------------------------------------------
 
 route('GET', '/broker/config', () => brokerConfig(getDb()), { auth: true });
 
@@ -2357,7 +2333,6 @@ route(
   { auth: true },
 );
 
-// --- BROKER FUNDING (admin) ------------------------------------------------
 
 function adminBrokerList(db: ReturnType<typeof getDb>, direction: 'DEPOSIT' | 'WITHDRAWAL', query: Record<string, unknown>) {
   let rows = db.brokerTx.filter((t) => t.direction === direction);
@@ -2631,7 +2606,6 @@ route(
   { auth: true, admin: true },
 );
 
-// --- WELTRADE ACCOUNT REGISTRATION -----------------------------------------
 
 const CLIENT_ID_RE = /^[A-Za-z0-9._-]{3,64}$/;
 
@@ -2900,7 +2874,6 @@ route(
   { auth: true, admin: true },
 );
 
-// --- dispatcher ------------------------------------------------------------
 
 function match(pattern: string, path: string): Record<string, string> | null {
   const patternParts = pattern.split('/').filter(Boolean);

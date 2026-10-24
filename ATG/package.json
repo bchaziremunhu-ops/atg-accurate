@@ -4,9 +4,12 @@
   "version": "1.0.0",
   "description": "ATG Traders — full-stack trading education & signals platform",
   "scripts": {
-    "install:all": "cd server && npm install && cd ../client && npm install",
+    "install:all": "cd server && npm install && cd ../client && npm install && cd ../mobile && npm install",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
+    "dev:mobile": "cd mobile && npm run start",
+    "typecheck:mobile": "cd mobile && npm run typecheck",
+    "export:mobile": "cd mobile && npx expo export --platform android --platform ios",
     "db:setup": "cd server && npm run prisma:generate && npm run prisma:push && npm run seed",
     "test": "cd server && npm test",
     "build": "cd client && npm run build && cd ../server && npm run build",

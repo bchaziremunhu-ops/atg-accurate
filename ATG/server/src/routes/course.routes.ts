@@ -15,14 +15,6 @@ interface Principal {
   role: string;
 }
 
-/**
- * A member is entitled to a course's paid content only when:
- *   - the course is free (price <= 0), OR
- *   - they have a VERIFIED purchase (status PAID), OR
- *   - an enrollment was granted (e.g. by an admin), OR
- *   - they are an admin.
- * VIP membership alone does NOT unlock paid courses.
- */
 async function isEntitled(user: Principal | undefined, course: { id: string; price: number }): Promise<boolean> {
   if (!user) return course.price <= 0;
   if (isAdmin(user)) return true;
@@ -45,7 +37,6 @@ courseRouter.get(
   optionalAuth,
   asyncHandler(async (req, res) => {
     const level = req.query.level as string | undefined;
-    // Admins may list unpublished/archived courses too (?all=true).
     const all = req.query.all === 'true' && isAdmin(req.user);
     const courses = await prisma.course.findMany({
       where: {
@@ -56,10 +47,26 @@ courseRouter.get(
       include: { lessons: { orderBy: { order: 'asc' } } },
     });
 
-    let progressMap: Record<string, number> = {};
+    let progressMap: Record<string, { progress: number; enrollmentId: string }> = {};
+    let purchasedCourseIds = new Set<string>();
     if (req.user) {
-      const enrollments = await prisma.enrollment.findMany({ where: { userId: req.user.id } });
-      progressMap = Object.fromEntries(enrollments.map((e) => [e.courseId, e.progress]));
+      const [enrollments, purchases] = await Promise.all([
+        prisma.enrollment.findMany({
+          where: { userId: req.user.id },
+          select: { id: true, courseId: true, progress: true },
+        }),
+        prisma.purchase.findMany({
+          where: { userId: req.user.id, itemType: 'COURSE', status: 'PAID' },
+          select: { itemId: true },
+        }),
+      ]);
+      progressMap = Object.fromEntries(
+        enrollments.map((enrollment) => [
+          enrollment.courseId,
+          { progress: enrollment.progress, enrollmentId: enrollment.id },
+        ]),
+      );
+      purchasedCourseIds = new Set(purchases.map((purchase) => purchase.itemId));
     }
 
     res.json(
@@ -78,6 +85,8 @@ courseRouter.get(
         coverUrl: c.coverUrl,
         lessonCount: c.lessons.length,
         durationMin: c.lessons.reduce((s, l) => s + l.durationMin, 0),
+        entitled: c.price <= 0 || purchasedCourseIds.has(c.id) || Boolean(progressMap[c.id]),
+        enrollmentId: progressMap[c.id]?.enrollmentId ?? null,
         lessons: c.lessons.map((l) => ({
           id: l.id,
           title: l.title,
@@ -85,7 +94,7 @@ courseRouter.get(
           isFree: l.isFree,
           order: l.order,
         })),
-        progress: progressMap[c.id] ?? 0,
+        progress: progressMap[c.id]?.progress ?? 0,
       })),
     );
   }),
@@ -126,7 +135,6 @@ courseRouter.get(
       entitled,
       progress: enrollment?.progress ?? 0,
       enrollmentId: enrollment?.id ?? null,
-      // Non-entitled members can only preview lessons explicitly marked free.
       lessons: course.lessons.map((l) => ({
         ...l,
         locked: !entitled && !l.isFree,
@@ -165,7 +173,6 @@ courseRouter.post(
   }),
 );
 
-/** Persist lesson progress and recompute course progress / certificates. */
 courseRouter.post(
   '/:slug/progress',
   requireAuth,
@@ -259,11 +266,6 @@ async function notifyPublishedCourse(course: { slug: string; title: string }, me
   });
 }
 
-/**
- * Free courses are capped (MAX_FREE_COURSES, default 5) so the paid catalogue
- * stays the main offer. Enforced on create, and whenever a course's price is
- * changed to free, so the limit cannot be bypassed via PATCH.
- */
 async function assertFreeCourseAllowed(price: number, excludeSlug?: string) {
   if (price > 0) return;
   const free = await prisma.course.count({
@@ -278,7 +280,6 @@ async function assertFreeCourseAllowed(price: number, excludeSlug?: string) {
   }
 }
 
-// ---- Admin CRUD ----
 const courseSchema = z.object({
   slug: z.string().min(1),
   title: z.string().min(1),

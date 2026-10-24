@@ -1,16 +1,5 @@
 import { prisma } from './prisma.js';
 
-/**
- * Security-event audit trail.
- *
- * Registration, logins (success and failure), every account-recovery step and
- * every password reset are recorded with the actor (when known), the attempted
- * phone number, IP and user agent. Recording must never break the request —
- * an audit failure is logged, not thrown.
- *
- * Nothing private is stored here: no passwords, no security answers, no
- * tokens. `meta` holds only non-sensitive context.
- */
 
 export type SecurityEventType =
   | 'REGISTER'
@@ -27,7 +16,6 @@ export type SecurityEventType =
 
 export interface SecurityEventInput {
   userId?: string | null;
-  /** Attempted or owned phone number in E.164 form (may be null). */
   phoneE164?: string | null;
   type: SecurityEventType;
   ip?: string | null;
@@ -48,12 +36,10 @@ export async function recordSecurityEvent(input: SecurityEventInput): Promise<vo
       },
     });
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.warn('[security-events] failed to record', input.type, e);
   }
 }
 
-/** Client IP + user agent, for the audit trail. */
 export function requestActor(req: { ip?: string; headers: Record<string, unknown> }): {
   ip: string | null;
   userAgent: string | null;

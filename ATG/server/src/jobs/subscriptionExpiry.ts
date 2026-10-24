@@ -57,12 +57,6 @@ export async function runMembershipAccessExpiryNotifications(now = new Date()): 
   }
 }
 
-/**
- * Subscription lifecycle job.
- * - Warns users 3 days and 1 day before expiry.
- * - Expires memberships whose end date passed and flips isVip off.
- * Runs daily at 08:00 server time.
- */
 export function startSubscriptionJobs() {
   cron.schedule('0 8 * * *', async () => {
     try {

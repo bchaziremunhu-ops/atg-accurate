@@ -8,23 +8,6 @@ import { notify, notifyMany } from '../notifications.service.js';
 import { getIo } from '../../realtime/socket.js';
 import type { Broker } from './adapters.js';
 
-/**
- * Broker funding lifecycle.
- *
- *   PENDING → UNDER_REVIEW → APPROVED → PROCESSING → COMPLETED
- *                    ↘ REJECTED                ↘ FAILED
- *
- * Invariants enforced here (never only in the UI):
- *
- *  - A WITHDRAWAL must pass UNDER_REVIEW before it can be approved — admin
- *    review is mandatory, never optional.
- *  - PROCESSING → COMPLETED always requires *evidence*: a verified provider
- *    webhook or a recorded reconciliation note/provider reference. There is no
- *    code path that invents a successful transfer.
- *  - Broker money is never written to Wallet/Transaction. Broker ledgers and
- *    the ATG wallet are separate balances on purpose.
- *  - Every transition appends an immutable audit row.
- */
 
 export const FUNDING_STATUSES = ['PENDING', 'UNDER_REVIEW', 'APPROVED', 'PROCESSING', 'COMPLETED', 'REJECTED', 'FAILED'] as const;
 export type FundingStatus = (typeof FUNDING_STATUSES)[number];
@@ -58,10 +41,6 @@ export interface FundingLimits {
   feePct: number;
 }
 
-/**
- * Effective limits: env defaults overlaid with admin overrides stored at
- * runtime (Setting table). Admins change these without a redeploy.
- */
 export async function fundingLimits(): Promise<FundingLimits> {
   const settings = await getBrokerSettings();
   return {
@@ -73,7 +52,6 @@ export async function fundingLimits(): Promise<FundingLimits> {
   };
 }
 
-/** Fee taken on a deposit at the current rate (rounded to cents). */
 export function depositFee(amount: number, feePct: number): number {
   return Math.round(amount * feePct) / 100;
 }
@@ -82,7 +60,6 @@ export function newFundingReference(direction: FundingDirection): string {
   return `${direction === 'DEPOSIT' ? 'ATG-BD' : 'ATG-BW'}-${nanoid(8).toUpperCase()}`;
 }
 
-/** `0771234567` → `0771***567`. Destination details are never listed in full. */
 export function maskDestination(value: string | null | undefined): string | null {
   if (!value) return null;
   const clean = value.trim();
@@ -109,7 +86,6 @@ export interface AuditInput {
   metadata?: Record<string, unknown>;
 }
 
-/** Appends an immutable audit row. Rows are never updated or deleted. */
 export async function recordAudit(input: AuditInput): Promise<void> {
   await prisma.brokerAuditLog.create({
     data: {
@@ -134,7 +110,6 @@ export async function notifyFundingAdmins(input: { title: string; body: string; 
   await notifyMany(admins.map((a) => a.id), { ...input, type: 'PAYMENT' });
 }
 
-/** Push a realtime nudge to the customer and to every signed-in admin. */
 export function emitFundingUpdate(userId: string, payload: Record<string, unknown>) {
   const io = getIo();
   if (!io) return;
@@ -171,15 +146,9 @@ export interface TransitionInput {
   eventId?: string | null;
   note?: string | null;
   metadata?: Record<string, unknown>;
-  /** Set false for silent bookkeeping (webhook retries already notified). */
   notifyCustomer?: boolean;
 }
 
-/**
- * The single write path for every broker-funding status change.
- * Validates the transition, updates the row, writes the audit entry and
- * notifies the customer.
- */
 export async function applyTransition(input: TransitionInput): Promise<BrokerTransaction> {
   const { tx, to } = input;
 
@@ -190,11 +159,9 @@ export async function applyTransition(input: TransitionInput): Promise<BrokerTra
   if (!allowed.includes(to)) {
     throw new HttpError(409, `Cannot move from ${tx.status} to ${to}`, 'INVALID_TRANSITION');
   }
-  // Withdrawals always require an explicit review step before approval.
   if (tx.direction === 'WITHDRAWAL' && to === 'APPROVED' && tx.status !== 'UNDER_REVIEW') {
     throw new HttpError(409, 'Withdrawals must be reviewed before they can be approved', 'REVIEW_REQUIRED');
   }
-  // Money may only be called Completed with evidence in hand.
   if (to === 'COMPLETED' && !input.evidence && !input.providerRef) {
     throw new HttpError(
       400,
@@ -260,7 +227,6 @@ export async function applyTransition(input: TransitionInput): Promise<BrokerTra
   return updated;
 }
 
-/** The happy path, in order. Used when a provider confirmation may skip steps. */
 const ORDER: FundingStatus[] = ['PENDING', 'UNDER_REVIEW', 'APPROVED', 'PROCESSING', 'COMPLETED'];
 
 export interface AdvanceOptions {
@@ -276,14 +242,6 @@ export interface AdvanceOptions {
   metadata?: Record<string, unknown>;
 }
 
-/**
- * Moves a transaction forward to `target`, applying every intermediate step of
- * the required lifecycle and auditing each one (source PROVIDER / SYSTEM).
- *
- * Used only when there is real evidence to justify the move — a
- * signature-verified webhook. The `eventId` anchor is written on the FINAL
- * step only, so replayed callbacks stay idempotent.
- */
 export async function advanceTo(tx: BrokerTransaction, target: 'COMPLETED' | 'FAILED', opts: AdvanceOptions): Promise<BrokerTransaction> {
   let current = tx;
 
@@ -318,7 +276,6 @@ export async function advanceTo(tx: BrokerTransaction, target: 'COMPLETED' | 'FA
       actor: opts.actor,
       source: opts.source,
       provider: opts.provider,
-      // Anchor the idempotency key on the final step only.
       eventId: isFinal ? opts.eventId : null,
       evidence: isFinal ? opts.evidence : undefined,
       evidenceType: isFinal ? opts.evidenceType : undefined,

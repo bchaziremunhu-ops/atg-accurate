@@ -26,23 +26,14 @@ import {
 
 export const authRouter = Router();
 
-/**
- * Registration — no SMS, email or OTP verification. The information supplied
- * is validated, normalised and stored; the account is usable immediately.
- * Phone numbers are the trader's identity, so they must include (or resolve
- * to) an international country code and are deduplicated on the normalised
- * E.164 form.
- */
 const registerSchema = z.object({
   name: z.string().min(2, 'Enter your full legal name').max(120),
   phone: z.string().min(6, 'Enter a valid phone number').max(25),
   country: z.string().min(2, 'Select your country of residence').max(60),
   nationality: z.string().min(2, 'Select your nationality').max(60),
-  // ISO calendar date (YYYY-MM-DD).
   dateOfBirth: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be in YYYY-MM-DD format'),
-  // Optional field — clearly labelled optional in the UI.
   address: z.string().max(200).optional().or(z.literal('')),
   securityQuestion: z.string().refine(isValidQuestionId, 'Choose a security question'),
   securityAnswer: z.string().min(2, 'Security answer must be at least 2 characters').max(100),
@@ -54,12 +45,9 @@ const registerSchema = z.object({
   acceptPrivacy: z.literal(true, {
     errorMap: () => ({ message: 'You must accept the Privacy Policy' }),
   }),
-  // Optional legacy field — email is never required for traders.
   email: z.string().email().optional().or(z.literal('')),
 });
 
-// Login accepts a phone number (traders) or an email address (admin) through
-// one field: `identifier` (or legacy `email`/`phone` keys).
 const loginSchema = z
   .object({
     identifier: z.string().min(1).optional(),
@@ -86,7 +74,6 @@ const resetSchema = identitySchema.extend({
 
 const digits = (value: string) => value.replace(/\D/g, '');
 
-/** Single wording for every "details didn't match" recovery failure. */
 const RECOVERY_GENERIC =
   "We couldn't verify those details. Check the phone number, full legal name and date of birth, then try again.";
 
@@ -114,13 +101,12 @@ function parseDob(value: string): Date | null {
   }
   const now = new Date();
   if (date.getTime() > Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) {
-    return null; // no future births
+    return null;
   }
   if (y < 1900) return null;
   return date;
 }
 
-/** Same-day comparison of a stored DOB with a submitted date string. */
 function dobMatches(stored: Date | null, submitted: string): boolean {
   if (!stored) return false;
   const parsed = parseDob(submitted);
@@ -132,7 +118,6 @@ function dobMatches(stored: Date | null, submitted: string): boolean {
   );
 }
 
-/** Resolves a normalised phone to a user (E.164 column, then legacy digits). */
 async function findUserByPhone(normalized: NormalizedPhone) {
   return prisma.user.findFirst({
     where: { OR: [{ phoneE164: normalized.e164 }, { phone: normalized.digits }] },
@@ -169,6 +154,7 @@ function publicUser(u: {
   phoneE164?: string | null;
   country?: string | null;
   nationality?: string | null;
+  bio?: string | null;
 }) {
   const membership = effectiveMembership({
     membership: u.membership,
@@ -188,10 +174,10 @@ function publicUser(u: {
     phoneE164: u.phoneE164,
     country: u.country,
     nationality: u.nationality,
+    bio: u.bio,
   };
 }
 
-/** The fixed question list, published so the register form can render it. */
 authRouter.get('/security-questions', (_req, res) => {
   res.json({ questions: SECURITY_QUESTIONS });
 });
@@ -206,7 +192,6 @@ authRouter.post(
 
     const email = (data.email || `${normalized.digits}@atg.app`).toLowerCase();
 
-    // Uniqueness across both phone representations plus the derived email.
     const clash = await prisma.user.findFirst({
       where: {
         OR: [
@@ -249,7 +234,6 @@ authRouter.post(
         },
       });
     } catch (e) {
-      // Unique-constraint race (two submits of the same number).
       if ((e as { code?: string }).code === 'P2002') {
         throw new HttpError(409, 'An account with that phone number already exists');
       }
@@ -290,14 +274,10 @@ authRouter.post(
     if (isEmail) {
       user = await prisma.user.findUnique({ where: { email: raw.toLowerCase() } });
     } else {
-      // Traders sign in with their phone number: accept the canonical E.164
-      // form, any national format that resolves to it, or the legacy digits
-      // stored for accounts created before E.164 existed.
       const normalized = normalizePhone(raw);
       if (normalized) {
         user = await findUserByPhone(normalized);
       }
-      // Fall back to raw digits so unusual legacy rows still resolve.
       if (!user) {
         const d = digits(raw);
         if (d) user = await prisma.user.findFirst({ where: { OR: [{ phone: d }, { phoneE164: `+${d}` }] } });
@@ -333,16 +313,7 @@ authRouter.post(
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Account recovery — no SMS, no email, no OTP. Everything is checked against
-// the server-side database in three steps:
-//   1. start   — phone number (never reveals whether it exists)
-//   2. verify  — full legal name + date of birth → returns the security question
-//   3. reset   — security answer + new password
-// The client is never trusted: every step re-reads the database.
-// ---------------------------------------------------------------------------
 
-/** Step 1 — acknowledge the phone number. Always succeeds. */
 authRouter.post(
   '/forgot/start',
   asyncHandler(async (req, res) => {
@@ -353,11 +324,6 @@ authRouter.post(
   }),
 );
 
-/**
- * Step 2 — verify personal details, then reveal the security question.
- * Returns the identical generic error whether the account is missing, the
- * name is wrong, the DOB is wrong, or the phone never existed.
- */
 authRouter.post(
   '/forgot/verify',
   asyncHandler(async (req, res) => {
@@ -397,12 +363,6 @@ authRouter.post(
   }),
 );
 
-/**
- * Step 3 — check the security answer and set the new password.
- * Identity is re-verified from scratch (stateless, no ticket to forge), the
- * answer is checked against its scrypt hash, the new password is hashed with
- * bcrypt, every existing session is revoked, and the attempt is audited.
- */
 authRouter.post(
   '/forgot/reset',
   asyncHandler(async (req, res) => {
@@ -457,9 +417,6 @@ authRouter.post(
       where: { id: user.id },
       data: { passwordHash },
     });
-    // A password reset must kill every live session (stolen phone, shared
-    // device, leaked refresh token). Access tokens already expire within
-    // minutes; refresh tokens die immediately.
     await revokeSession(user.id);
     await clearRecoveryFailures(user.id);
     await audit(req, 'PASSWORD_RESET', { userId: user.id, phoneE164: user.phoneE164 });
@@ -477,13 +434,9 @@ authRouter.post(
     try {
       payload = verifyRefreshToken(refreshToken);
     } catch {
-      // Expired / tampered tokens are a normal 401, never a 500.
       throw new HttpError(401, 'Invalid refresh token');
     }
 
-    // Rotation: the presented token must match the stored hash (or the
-    // immediately-previous one inside the grace window). Anything older
-    // revokes every session for that user.
     const rotated = await rotateSession(refreshToken, payload);
     if (!rotated.ok) throw new HttpError(401, 'Refresh token revoked');
 
@@ -514,8 +467,6 @@ authRouter.post(
   '/logout',
   requireAuth,
   asyncHandler(async (req, res) => {
-    // Server-side revocation: the stored hash is cleared, so the client's
-    // refresh token is dead immediately (no waiting for JWT expiry).
     await revokeSession(req.user!.id);
     res.json({ ok: true });
   }),

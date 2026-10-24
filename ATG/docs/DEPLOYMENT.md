@@ -4,85 +4,102 @@ ATG's web, Android, and iPhone clients all use the same Express API. The API is
 the only service that connects to MySQL; mobile apps must never connect directly
 to the database. Socket.IO chat also connects to this API over HTTPS/WebSocket.
 
-This guide uses Railway for the API and MySQL services. Hosting requires a
+This guide uses Railway for the API and MySQL services. In this checkout the
+application lives in the `ATG/` directory under the Git repository root; set
+Railway's service root directory to `/ATG`. Hosting requires a
 Railway account, a connected GitHub repository, and a paid plan suitable for
 persistent financial records. Do not put production credentials in Git.
 
 ## 1. Create cloud services
 
-1. Push this repository to a private GitHub repository.
-2. Create a Railway project from the repository, with its root at the repository
-   root. `railway.toml` configures the API build, start command, and health path.
+1. Push this repository to a private GitHub repository. The root `.gitignore`
+   and `ATG/.gitignore` exclude local editor files, environment files, database
+   backups, and logs.
+2. Create a Railway project from the repository and set the service root
+   directory to `/ATG`. `railway.toml` configures the API build, start command,
+   and health path.
 3. Add a Railway MySQL service in the same project and environment. Keep it on
    private networking; do not create a public TCP proxy for normal app traffic.
 4. Set the app service's `DATABASE_URL` to Railway's private MySQL connection
    URL using a Railway variable reference, not a copied credential.
-5. Generate independent random `JWT_SECRET` and `JWT_REFRESH_SECRET` values of
-   at least 32 characters, and add them as private app service variables.
-6. After Railway generates the app's HTTPS domain, set `PUBLIC_URL` and
-   `CLIENT_ORIGIN` to that origin. Set `ALLOWED_ORIGINS` to the same origin if
-   using a separate frontend. Keep the API and frontend on one origin unless
-   there is a clear need for a separate site.
-7. Deploy and confirm `https://<app-domain>/api/health` returns HTTP 200 and
-   that the deployment's Socket.IO/WebSocket connection succeeds.
+5. Set `NODE_ENV=production`. Generate independent random `JWT_SECRET` and
+   `JWT_REFRESH_SECRET` values of at least 32 characters, and add them as
+   private app service variables.
+6. Attach the owned `atg.com` domain to the app service, configure the DNS
+   records Railway provides, and wait for HTTPS/TLS verification. Set
+   `PUBLIC_URL` and `CLIENT_ORIGIN` to `https://atg.com`. Set `ALLOWED_ORIGINS`
+   to the same origin if using a separate frontend. Keep the API and frontend
+   on one origin unless there is a clear need for a separate site.
+7. Add a Railway persistent volume to the app service, mounted at `/data`, and
+   set `AVATAR_DIR=/data/avatars` in the app service variables. Avatar files
+   must live on persistent storage so they survive deploys and restarts.
 
-Enable scheduled MySQL volume backups before importing production records.
-Confirm how to restore a backup. Take an additional manual backup immediately
-before and after the import.
+## 2. Create the schema and initial administrator
 
-## 2. Create the schema and import data
+This deployment starts with a new, empty MySQL database; do not import local
+database backups. Install the Railway CLI, authenticate in your browser, and
+link it to the project:
 
-The checked-in PostgreSQL backups and MySQL snapshot are local rollback artifacts;
-they are not uploaded by a normal Git deployment. Keep them in the restricted
-backup folder and transfer them only to a trusted, authenticated workstation.
+```powershell
+npm.cmd install --global @railway/cli
+railway login
+railway link
+```
 
-Before first import:
+Then use the API service's private environment to prepare the database:
 
-1. Use a separate cloud MySQL database/environment as a staging target. Set its
-   `DATABASE_URL` only in a private local shell for the migration operator.
-2. Run `npm ci --prefix server`, then
-   `npm run prisma:generate --prefix server`.
-3. Create the schema with `npm run prisma:push --prefix server`. This syncs the
-   Prisma schema; review any proposed changes and do not use a reset or
-   `--accept-data-loss` option.
-4. Import the frozen, verified snapshot from a trusted workstation with
-   `node server/scripts/import-mysql-snapshot.mjs <private-snapshot.json>`.
-   Verify all rows with
-   `node server/scripts/verify-mysql-snapshot.mjs <private-snapshot.json>`.
-   Both scripts require `DATABASE_URL` in the operator's private environment,
-   refuse a populated import target, and avoid printing record contents.
-5. Deploy the API against the imported staging database. Test sign-in, account
-   recovery, permissions, courses, signals, community chat, notifications,
-   payments, wallet withdrawals, broker-funding requests, and admin review.
-6. To cut over, freeze writes to the old system, take a final consistent
-   snapshot, import/verify it, change the app's private `DATABASE_URL` to the
-   accepted cloud database, and redeploy. Keep the source and rollback backups
-   until written acceptance plus the agreed retention period.
+```powershell
+npm.cmd ci --prefix ATG\server
+railway run --service <api-service> npm.cmd run prisma:generate --prefix ATG\server
+railway run --service <api-service> npm.cmd run prisma:push --prefix ATG\server
+```
 
-Do not run the seed command against imported production data. The seed script
-updates the administrator credentials and replaces demo signals/courses.
+Create the administrator once by setting `BOOTSTRAP_ADMIN_EMAIL`,
+`BOOTSTRAP_ADMIN_NAME`, and a unique `BOOTSTRAP_ADMIN_PASSWORD` of at least 16
+characters as private Railway service variables, then run:
+
+```powershell
+railway run --service <api-service> npm.cmd run admin:bootstrap --prefix ATG\server
+```
+
+The bootstrap refuses to run if any user already exists. Remove the one-time
+`BOOTSTRAP_ADMIN_PASSWORD` variable from Railway as soon as account creation
+succeeds. Do not run the demo seed in production.
+
+Deploy the API and verify `https://<app-domain>/api/health` returns HTTP 200.
+Before opening registration or accepting payments, test administrator sign-in,
+registration, profile/avatar persistence, community, signals, permissions, and
+the payment flows you intend to enable. Enable scheduled MySQL backups and
+confirm the restore process.
 
 ## 3. Connect Android and iPhone
 
 Native builds embed the API origin at build time. Once the cloud HTTPS domain is
-verified, build the web assets and native packages with that URL:
+verified, configure the app from `ATG\mobile`:
 
 ```powershell
-Set-Location .\client
-$env:VITE_API_URL = "https://<app-domain>"
-npm.cmd ci
-npm.cmd run build
-npx.cmd cap sync android
-npx.cmd cap sync ios
+Set-Location .\ATG\mobile
+npx.cmd eas-cli@latest login
+npx.cmd eas-cli@latest build:configure
 ```
 
-Build/sign the Android APK/AAB using Android tooling. iOS signing, archiving,
-and device installation require macOS and Xcode (or a trusted cloud macOS
-builder). Install test builds on actual devices and verify that multiple phones
-can sign into the same accounts, see the same records, and exchange community
-chat messages. Native push notifications additionally require APNs/FCM
-credentials and device-token registration; they are not activated by this
-database deployment alone.
+After configuration creates the Expo project, set `EXPO_PUBLIC_API_URL` to the
+same HTTPS origin in that project's environment settings for preview and
+production. It is public client configuration, not a secret. Then build:
+
+```powershell
+npx.cmd eas-cli@latest build --platform all --profile preview
+```
+
+The `mobile/eas.json` preview profile creates an Android APK for internal
+testing and an iOS internal build. `build:configure` links this app to the Expo
+account and adds its project ID to the local app configuration. Use the
+production profile for store artifacts after testing and completing the
+Android/Apple store account and signing setup. Install preview builds on
+devices and verify that multiple phones sign into the same accounts, see the
+same records, and exchange community chat messages. Native push notifications
+additionally require APNs/FCM credentials and device-token registration; they
+are not activated by this database deployment alone.
 
 The existing web client automatically uses its own origin for the API when
 `VITE_API_URL` is unset, so a single-origin web deployment needs no public

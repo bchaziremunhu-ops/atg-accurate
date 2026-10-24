@@ -4,8 +4,6 @@
 
 :root {
   color-scheme: light;
-  /* iOS standalone Safari (viewport-fit=cover) leaves the notch and home
-     indicator over the page — these feed env() so layout can clear them. */
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
@@ -13,7 +11,6 @@
 }
 
 html {
-  /* iOS inflates text when the device is rotated — pin it to 100%. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -21,24 +18,72 @@ html {
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
+}
+
+html,
+body {
+  min-width: 320px;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+body,
+#root {
+  width: 100%;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+img,
+video,
+canvas,
+iframe {
+  max-width: 100%;
+}
+
+pre,
+code,
+input,
+button,
+a,
+p {
+  overflow-wrap: anywhere;
+}
+
+.app-main {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: visible;
+    touch-action: auto;
+  }
 }
 
 .auth-viewport {
   min-height: 100vh;
+  min-height: 100svh;
   min-height: 100dvh;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 body {
   @apply bg-cream-100 text-ink font-sans antialiased;
-  /* No grey flash / blue flash on tap in the standalone app. */
   -webkit-tap-highlight-color: transparent;
-  /* Standalone apps should not chain into pull-to-refresh or rubber-banding. */
   overscroll-behavior-y: none;
   background-color: #F7F8FA;
+  line-height: 1.5;
 }
 
 :focus-visible {
@@ -46,8 +91,6 @@ body {
   outline-offset: 2px;
 }
 
-/* iOS Safari zooms the whole page when an input under 16px is focused —
-   keep touch inputs at 16px and only tighten up on real desktop pointers. */
 @media (pointer: coarse) {
   input,
   select,
@@ -59,6 +102,8 @@ body {
 @layer components {
   .card {
     @apply rounded-2xl border border-cream-200 bg-white shadow-card;
+    min-width: 0;
+    box-shadow: 0 8px 28px -20px rgba(23, 25, 29, 0.38);
   }
   .chip {
     @apply whitespace-nowrap rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors;
@@ -84,6 +129,7 @@ body {
   .input {
     @apply w-full rounded-xl border border-cream-300 bg-white px-4 py-3 text-sm outline-none transition
       placeholder:text-ink-faint focus:border-gold-600 focus:ring-4 focus:ring-gold-100;
+    min-width: 0;
   }
   .label {
     @apply mb-1.5 block text-xs font-semibold text-ink-soft;
@@ -100,7 +146,6 @@ body {
 }
 
 @layer utilities {
-  /* iPhone notch / home-indicator clearances (0px everywhere else). */
   .pt-safe {
     padding-top: var(--sat);
   }
@@ -116,21 +161,17 @@ body {
   }
 }
 
-/* Full-height panels (chat). 100vh on iOS counts the toolbar area that is
-   hidden in standalone mode, so prefer the dynamic viewport unit where the
-   browser supports it and keep 100vh as the fallback. */
 .chat-viewport {
-  height: calc(100vh - 9.25rem - var(--sab));
-  height: calc(100dvh - 9.25rem - var(--sab));
+  height: calc(100vh - 9.25rem - var(--sat) - var(--sab));
+  height: calc(100dvh - 9.25rem - var(--sat) - var(--sab));
 }
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .chat-viewport {
     height: calc(100vh - 4.5rem);
     height: calc(100dvh - 4.5rem);
   }
 }
 
-/* Hide scrollbars on horizontal chip rows */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -210,7 +251,6 @@ body {
   }
 }
 
-/* Print only the certificate when saving to PDF */
 @media print {
   body {
     background: #fff !important;

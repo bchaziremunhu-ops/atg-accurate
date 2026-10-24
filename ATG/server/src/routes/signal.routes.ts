@@ -36,9 +36,17 @@ const signalSchema = signalFieldsSchema.refine((signal) =>
   { message: 'Prices must match the trade direction: BUY requires SL < entry < TP; SELL requires TP < entry < SL.' },
 );
 
-/** Signals the principal is allowed to see. */
+async function syncSignalRoomPostSafely(signalId: string): Promise<void> {
+  try {
+    await syncSignalRoomPost(signalId);
+  } catch (error) {
+    console.error(`[signals] Could not mirror signal ${signalId} into its room`, error);
+  }
+}
+
 function audienceFilter(user: { role: string; membership: string; extraAccessLevels?: string[] } | undefined) {
-  if (!user || isAdmin(user)) return {};
+  if (isAdmin(user)) return {};
+  if (!user) return { audience: { in: ['FREE'] } };
   const allowed: string[] = ['FREE'];
   if (['PAID', 'VIP_DERIV', 'VIP_WELTRADE'].includes(user.membership)) allowed.push('PAID');
   if (user.membership === 'VIP_DERIV') allowed.push('VIP_DERIV');
@@ -47,7 +55,6 @@ function audienceFilter(user: { role: string; membership: string; extraAccessLev
   return { audience: { in: allowed } };
 }
 
-// List signals visible to the current member: ?audience=&status=&pair=&q=
 signalRouter.get(
   '/',
   optionalAuth,
@@ -76,7 +83,6 @@ signalRouter.get(
   }),
 );
 
-// Which rooms/pages the current member may open (used by the client nav).
 signalRouter.get(
   '/rooms/access',
   optionalAuth,
@@ -131,9 +137,6 @@ signalRouter.get(
   }),
 );
 
-// Live chart series for a pair — only when a real market-data feed is
-// configured. We never fabricate candles: if no feed is connected the client
-// shows an explicit "not connected" state.
 signalRouter.get(
   '/:id/chart',
   optionalAuth,
@@ -187,7 +190,6 @@ signalRouter.get(
   }),
 );
 
-// ---- Admin CRUD (publish / edit / update / close) ----
 signalRouter.post(
   '/',
   requireAuth,
@@ -197,8 +199,7 @@ signalRouter.post(
     const signal = await prisma.signal.create({
       data: { ...data, tier: data.audience === 'FREE' ? 'FREE' : 'VIP', authorId: req.user!.id },
     });
-    // Mirror into the matching room so members see it where their access lives.
-    await syncSignalRoomPost(signal.id).catch(() => {});
+    await syncSignalRoomPostSafely(signal.id);
     await broadcastToAudience(signal.audience as AccessLevel, {
       title: `New signal: ${signal.pair}`,
       body: `${signal.direction} @ ${signal.entry} · TP ${signal.takeProfit} · SL ${signal.stopLoss}`,
@@ -228,8 +229,7 @@ signalRouter.patch(
       },
     });
 
-    // Refresh the mirrored room post (moves rooms if the audience changed).
-    await syncSignalRoomPost(signal.id).catch(() => {});
+    await syncSignalRoomPostSafely(signal.id);
 
     if (data.status && data.status !== 'OPEN' && prev.status === 'OPEN') {
       await broadcastToAudience(signal.audience as AccessLevel, {

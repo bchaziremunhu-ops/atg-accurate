@@ -8,18 +8,6 @@ import { HttpError } from '../middleware/error.js';
 import { notify } from '../services/notifications.service.js';
 import { notifyFundingAdmins } from '../services/brokerFunding/index.js';
 
-/**
- * Broker account registration (Weltrade) — customer + admin API.
- *
- * A member submits the client id their broker issued them. Nothing is granted
- * by submitting: `status` only ever moves to VERIFIED/REJECTED through an
- * administrator action (or, in a future integration, a signed provider
- * callback). Every state change is appended to `BrokerAccountEvent`.
- *
- * The customer router only ever reads and writes the caller's own row — there
- * is no path to another member's record. The admin router is role-guarded by
- * middleware, not by hiding buttons in the UI.
- */
 
 export const brokerAccountRouter = Router();
 brokerAccountRouter.use(requireAuth);
@@ -30,12 +18,6 @@ brokerAccountAdminRouter.use(requireAuth, requireRole('ADMIN'));
 const BROKER = 'WELTRADE';
 const REGISTER_URL_KEY = 'weltradeRegisterUrl';
 
-/**
- * The official sign-up link. `WELTRADE_REGISTER_URL` is the deploy-time default;
- * an administrator can override it at runtime (Setting table) without a
- * redeploy. Deliberately returns `null` when unset or malformed — the app never
- * substitutes a guessed or referral URL.
- */
 function sanitizeUrl(raw: string | null | undefined): string | null {
   const value = raw?.trim();
   if (!value) return null;
@@ -102,9 +84,6 @@ function event(action: string, data: {
   return { action, ...data };
 }
 
-// ---------------------------------------------------------------------------
-// Customer
-// ---------------------------------------------------------------------------
 
 brokerAccountRouter.get(
   '/',
@@ -138,8 +117,6 @@ brokerAccountRouter.post(
           where: { id: existing.id },
           data: {
             clientId,
-            // A rejected submission goes back into the queue; a pending one
-            // keeps its status (an edit never skips review).
             ...(existing.status === 'REJECTED' ? { status: 'PENDING', rejectReason: null } : {}),
             reviewedAt: null,
             reviewedById: null,
@@ -195,9 +172,6 @@ brokerAccountRouter.post(
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Admin — list, search/filter, verify / reject
-// ---------------------------------------------------------------------------
 
 const listSchema = z.object({
   status: z.enum(['PENDING', 'VERIFIED', 'REJECTED']).optional(),

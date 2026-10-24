@@ -71,11 +71,11 @@ export default function SignalDetail() {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-4 text-center">
         <p className="font-semibold">{accessDenied ? 'This signal is for a members-only room.' : 'This signal couldn’t be loaded.'}</p>
         <p className="text-sm text-ink-muted">
-          {accessDenied ? 'Request access to the matching membership to view this signal.' : 'It may have been removed or your connection may have dropped.'}
+          {accessDenied ? 'Buy a membership that includes this VIP room. Your signal access starts after your payment is approved.' : 'It may have been removed or your connection may have dropped.'}
         </p>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => signal.refetch()}>Try again</Button>
-          {accessDenied && <Link to="/profile/subscription" className="btn-gold px-4 py-2">View memberships</Link>}
+          {accessDenied && <Link to="/profile/subscription" className="btn-gold px-4 py-2">View VIP plans &amp; prices</Link>}
           <Link to="/signals" className="btn-outline px-4 py-2">Back to signals</Link>
         </div>
       </div>
@@ -181,7 +181,7 @@ export default function SignalDetail() {
         </div>
       </Card>
 
-      <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-cream-200 bg-white p-4">
+      <div className="mt-4 grid grid-cols-1 gap-2 rounded-2xl border border-cream-200 bg-white p-4 min-[480px]:grid-cols-3">
         {[
           { label: 'Entry', value: s.entry },
           { label: 'Take Profit', value: s.takeProfit },
@@ -213,10 +213,23 @@ export default function SignalDetail() {
         </>
       )}
 
-      <p className="mt-4 text-xs text-ink-muted">
-        Published {new Date(s.publishedAt).toLocaleString()}
-        {s.author ? ` by ${s.author.name}` : ''}
-      </p>
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+        <span>Published {new Date(s.publishedAt).toLocaleString()}</span>
+        {s.author && (
+          <span className="inline-flex items-center gap-1.5">
+            <span>by</span>
+            {s.author.avatarUrl ? (
+              <img src={s.author.avatarUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
+            ) : (
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-ink text-[8px] font-bold text-gold-200">
+                {s.author.name.slice(0, 2).toUpperCase()}
+              </span>
+            )}
+            <span className="font-semibold text-ink-soft">{s.author.name}</span>
+            {s.author.role === 'ADMIN' && <span>· ATG Admin</span>}
+          </span>
+        )}
+      </div>
 
       <div className="mt-5 rounded-2xl bg-cream-200 p-4 text-xs text-ink-muted">
         <p className="font-semibold text-ink">Educational signal — not trade execution</p>

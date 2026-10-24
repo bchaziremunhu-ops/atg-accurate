@@ -78,8 +78,6 @@ export default function BrokerFunds() {
   const [destinationType, setDestinationType] = useState<'MOBILE_WALLET' | 'BANK_ACCOUNT' | 'BROKER_ACCOUNT' | 'CRYPTO_WALLET'>('MOBILE_WALLET');
   const [error, setError] = useState('');
 
-  // One idempotency key per opened form — a double tap can never create two
-  // funding requests.
   const idemKey = useRef('');
 
   const config = useQuery({ queryKey: ['broker-config'], queryFn: brokerApi.config });

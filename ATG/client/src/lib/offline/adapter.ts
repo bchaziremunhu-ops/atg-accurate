@@ -1,8 +1,3 @@
-/**
- * Axios adapter that serves every API call from the on-device router instead
- * of the network. Installed at runtime only inside the native Capacitor shell
- * (see api.ts), so the web build keeps its normal HTTP behaviour.
- */
 
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { handle } from './router';
@@ -29,8 +24,6 @@ function splitUrl(config: InternalAxiosRequestConfig): { path: string; query: Re
     }
   }
   const query: Record<string, unknown> = {};
-  // Mirror axios' URL serialisation: primitives become strings, nullish is
-  // dropped — otherwise `?all=true` (boolean) would never match `=== 'true'`.
   for (const [key, value] of Object.entries(config.params ?? {})) {
     if (value === undefined || value === null) continue;
     query[key] = typeof value === 'string' ? value : String(value);

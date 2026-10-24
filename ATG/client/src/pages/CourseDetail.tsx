@@ -17,7 +17,7 @@ export default function CourseDetail() {
 
   const [buyOpen, setBuyOpen] = useState(false);
 
-  const courseQuery = useQuery({ queryKey: ['course', slug], queryFn: () => courseApi.get(slug) });
+  const courseQuery = useQuery({ queryKey: ['course', slug], queryFn: () => courseApi.get(slug), refetchOnMount: 'always' });
   const { data: course, isLoading } = courseQuery;
 
   const complete = useMutation({
@@ -121,7 +121,7 @@ export default function CourseDetail() {
             <p className="text-xs text-ink-muted">
               {isFree
                 ? 'Free short course — enroll now'
-                : `${course.currency ?? 'USD'} ${course.price.toFixed(2)} one-time · access after admin approval`}
+                : `${course.currency ?? 'USD'} ${course.price.toFixed(2)} total · one-time payment · course unlocks after payment review`}
             </p>
           </div>
           {isFree ? (
@@ -130,7 +130,7 @@ export default function CourseDetail() {
             </Button>
           ) : (
             <Button onClick={() => setBuyOpen(true)} disabled={!saleAvailable}>
-              <ShoppingCart className="h-4 w-4" /> {course.saleStatus === 'AVAILABLE' ? 'Request purchase' : course.saleStatus?.replace('_', ' ') ?? 'Unavailable'}
+              <ShoppingCart className="h-4 w-4" /> {course.saleStatus === 'AVAILABLE' ? 'Buy course access' : course.saleStatus?.replace('_', ' ') ?? 'Unavailable'}
             </Button>
           )}
         </Card>
@@ -211,7 +211,7 @@ export default function CourseDetail() {
       )}
       <div className="h-4" />
 
-      <Modal open={buyOpen} onClose={() => setBuyOpen(false)} title="Request course purchase">
+      <Modal open={buyOpen} onClose={() => setBuyOpen(false)} title="Buy course access">
         <PurchaseRequestForm
           item={{
             itemType: 'COURSE',
@@ -222,7 +222,6 @@ export default function CourseDetail() {
             currency: course.currency ?? 'USD',
           }}
           onSubmitted={() => {
-            setBuyOpen(false);
             qc.invalidateQueries({ queryKey: ['purchase-requests'] });
           }}
         />

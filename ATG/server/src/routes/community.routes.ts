@@ -11,7 +11,6 @@ export const communityRouter = Router();
 
 communityRouter.use(requireAuth);
 
-/** Only rooms the current member is entitled to see. */
 function groupWhere(user: { role: string; membership: string; isVip: boolean; extraAccessLevels?: string[] }) {
   if (isAdmin(user)) return {};
   const allowed: string[] = ['FREE'];
@@ -34,7 +33,6 @@ async function accessiblePost(postId: string, user: NonNullable<Express.Request[
   return post;
 }
 
-// ---- Groups / rooms ----
 communityRouter.get(
   '/groups',
   asyncHandler(async (req, res) => {
@@ -100,7 +98,6 @@ communityRouter.delete(
   }),
 );
 
-// ---- Feed / posts (only posts from rooms the member can access) ----
 communityRouter.get(
   '/posts',
   asyncHandler(async (req, res) => {
@@ -253,7 +250,6 @@ communityRouter.post(
   }),
 );
 
-// ---- Group chat (REST history; live delivery over socket.io) ----
 communityRouter.get(
   '/groups/:id/messages',
   asyncHandler(async (req, res) => {

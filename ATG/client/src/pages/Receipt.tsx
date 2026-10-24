@@ -4,7 +4,6 @@ import { ArrowLeft, Printer } from 'lucide-react';
 import { paymentApi } from '../lib/endpoints';
 import { Button, Card, Spinner } from '../components/ui';
 
-/** Printable proof of payment issued after a purchase is verified. */
 export default function Receipt() {
   const { id = '' } = useParams();
   const receipt = useQuery({ queryKey: ['receipt', id], queryFn: () => paymentApi.receipt(id), enabled: Boolean(id) });

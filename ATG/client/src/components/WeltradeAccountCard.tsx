@@ -7,14 +7,6 @@ import { useToast } from './Toast';
 import type { BrokerAccountStatus } from '../lib/types';
 import clsx from 'clsx';
 
-/**
- * Dashboard card that replaces the old "Live Support" tile: it walks the member
- * through opening a Weltrade account, submitting the client id they were issued
- * and tracking verification.
- *
- * Submitting never grants anything — `status` only changes when an
- * administrator reviews the submission (see Admin → Accounts).
- */
 
 const STEPS = [
   'Open a Weltrade account using the official registration link below.',

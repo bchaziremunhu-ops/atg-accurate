@@ -77,7 +77,6 @@ adminRouter.get(
   }),
 );
 
-// ---- Users & membership ----
 adminRouter.get(
   '/users',
   asyncHandler(async (req, res) => {
@@ -177,7 +176,6 @@ adminRouter.patch(
   }),
 );
 
-// ---- Transactions (deposit verification + withdrawal approval) ----
 adminRouter.get(
   '/transactions',
   asyncHandler(async (req, res) => {
@@ -319,7 +317,6 @@ adminRouter.patch(
   }),
 );
 
-// ---- Purchases (verify manual payments) ----
 adminRouter.get(
   '/purchases',
   asyncHandler(async (req, res) => {
@@ -367,7 +364,6 @@ adminRouter.patch(
   }),
 );
 
-// ---- Broadcast ----
 const broadcastSchema = z.object({
   title: z.string().min(2).max(120),
   body: z.string().min(2).max(500),
@@ -387,7 +383,6 @@ adminRouter.post(
   }),
 );
 
-// ---- Resource management (PDFs / ebooks) ----
 const resourceSchema = z.object({
   courseId: z.string().optional().nullable(),
   title: z.string().min(1),
@@ -420,7 +415,6 @@ adminRouter.delete(
   }),
 );
 
-// ---- Rooms ----
 adminRouter.get(
   '/groups',
   asyncHandler(async (_req, res) => {
@@ -483,9 +477,6 @@ adminRouter.delete(
   }),
 );
 
-// ---------------------------------------------------------------------------
-// Payments dashboard, refunds and the payment audit trail.
-// ---------------------------------------------------------------------------
 
 adminRouter.get(
   '/payments',
@@ -561,7 +552,6 @@ adminRouter.get(
 const refundActionSchema = z.object({
   action: z.enum(['APPROVE', 'REJECT', 'COMPLETE', 'FAIL']),
   reason: z.string().max(500).optional(),
-  // Required for COMPLETE: the provider reference for the completed refund.
   providerRef: z.string().max(120).optional(),
 });
 

@@ -1,10 +1,3 @@
-// ATG Traders service worker: web push + installable offline shell.
-//
-// Strategies:
-//   - /api, /socket.io  -> network only (never cache money/notification data)
-//   - /assets/* (hashed) -> cache first (immutable filenames)
-//   - navigations       -> network first, fall back to the cached app shell
-//   - same-origin GET   -> network first with cache fallback
 
 const CACHE = 'atg-v1';
 const SHELL = ['/'];
@@ -33,10 +26,9 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   const url = new URL(req.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io')) return; // network only
-  if (url.origin !== self.location.origin) return; // cross-origin (fonts) -> browser default
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io')) return;
+  if (url.origin !== self.location.origin) return;
 
-  // Hashed build assets: cache-first (filename changes on every deploy).
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.match(req).then(
@@ -52,7 +44,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigations + everything else: network first, cached shell as offline fallback.
   event.respondWith(
     fetch(req)
       .then((res) => {
@@ -64,7 +55,6 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ---- Web push (used by Settings → notifications) ----
 
 self.addEventListener('push', (event) => {
   let data = { title: 'ATG Traders', body: 'You have a new notification', link: '/' };

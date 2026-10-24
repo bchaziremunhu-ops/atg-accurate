@@ -1,8 +1,3 @@
-/**
- * Smoke test for the main user flows. Run with: npm test
- * Boots the API on an ephemeral port and exercises auth, roles, signals,
- * courses, rooms, wallet approval and admin flows end-to-end.
- */
 process.env.NODE_ENV = 'test';
 
 import http from 'node:http';
@@ -50,6 +45,17 @@ async function main() {
   await step('health check', async () => {
     const r = await req('/health');
     assert.equal(r.status, 200);
+  });
+
+  await step('anonymous visitors see only free signals', async () => {
+    const visible = await req('/signals', {}, undefined);
+    assert.equal(visible.status, 200);
+    const signals = (await visible.json()) as Array<{ audience: string }>;
+    assert.ok(signals.every((signal) => signal.audience === 'FREE'), 'anonymous visitors must not receive paid or VIP signals');
+
+    const requestedVip = await req('/signals?audience=VIP_DERIV', {}, undefined);
+    assert.equal(requestedVip.status, 200);
+    assert.deepEqual(await requestedVip.json(), [], 'requesting a VIP audience must not bypass public access filtering');
   });
 
   await step('register new FREE user', async () => {
@@ -149,7 +155,6 @@ async function main() {
     assert.equal(one.recipient, 'Smoke Tester');
     assert.ok(one.course?.title, 'certificate resolves its course');
 
-    // Certificates are owner-scoped: an unknown id is 404.
     const missing = await req('/users/certificates/does-not-exist');
     assert.equal(missing.status, 404);
   });
@@ -362,23 +367,52 @@ async function main() {
   });
 
   await step('admin can publish a Deriv VIP signal invisible to free user', async () => {
+    const testUser = await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } });
+    const derivAccess = await req(`/admin/users/${testUser.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ membership: 'VIP_DERIV', vipDays: 30 }),
+    }, adminToken);
+    assert.equal(derivAccess.status, 200);
+
     const r = await req('/signals', {
       method: 'POST',
       body: JSON.stringify({ pair: 'Test V50', direction: 'BUY', entry: 100, takeProfit: 110, stopLoss: 95, audience: 'VIP_DERIV' }),
     }, adminToken);
     assert.equal(r.status, 201);
     const sig = (await r.json()) as { id: string };
-    const freeView = (await (await req('/signals')).json()) as Array<{ id: string }>;
-    assert.ok(!freeView.some((s) => s.id === sig.id), 'free user must not see a Deriv VIP signal');
+    const anonymousView = await fetch(`${base}/signals`);
+    assert.equal(anonymousView.status, 200);
+    const freeView = (await anonymousView.json()) as Array<{ id: string }>;
+    assert.ok(!freeView.some((s) => s.id === sig.id), 'free visitors must not see a Deriv VIP signal');
+    const derivSignals = (await (await req('/signals')).json()) as Array<{ id: string }>;
+    assert.ok(derivSignals.some((signal) => signal.id === sig.id), 'Deriv VIP members must see their signal');
+    assert.equal((await req(`/signals/${sig.id}`)).status, 200, 'Deriv VIP members must open their signal');
 
-    // The signal is mirrored into the Deriv VIP room automatically.
+    const weltradeAccess = await req(`/admin/users/${testUser.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ membership: 'VIP_WELTRADE', vipDays: 30 }),
+    }, adminToken);
+    assert.equal(weltradeAccess.status, 200);
+    const weltradeSignals = (await (await req('/signals')).json()) as Array<{ id: string }>;
+    assert.ok(!weltradeSignals.some((signal) => signal.id === sig.id), 'Weltrade VIP members must not see Deriv-only signals');
+    assert.equal((await req(`/signals/${sig.id}`)).status, 402, 'Weltrade VIP members must not open Deriv-only signals');
+
+    const restored = await req(`/admin/users/${testUser.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ membership: 'FREE' }),
+    }, adminToken);
+    assert.equal(restored.status, 200);
+    const targetedNotification = await prisma.notification.findFirst({
+      where: { userId: testUser.id, link: `/signals/${sig.id}` },
+    });
+    assert.ok(targetedNotification, 'new Deriv signal should notify an eligible Deriv VIP member');
+
     const room = await prisma.group.findFirst({ where: { accessTier: 'VIP_DERIV' } });
     const mirrored = room
       ? await prisma.groupPost.findFirst({ where: { groupId: room.id, body: { contains: 'Test V50' } } })
       : null;
     assert.ok(mirrored, 'signal should appear as a post in the correct room');
 
-    // Admin can close the signal with a final result; the mirrored post updates.
     const closed = await req(`/signals/${sig.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'HIT_TP', resultPct: 1.25, resultPips: 120 }),
@@ -391,7 +425,6 @@ async function main() {
     const refreshed = mirrored ? await prisma.groupPost.findUnique({ where: { id: mirrored.id } }) : null;
     assert.ok(refreshed?.body.includes('Result: +1.25%'), 'mirrored post shows the final result');
 
-    // Deleting the signal removes the mirrored post too.
     const del = await req(`/signals/${sig.id}`, { method: 'DELETE' }, adminToken);
     assert.equal(del.status, 200);
     const stillThere = mirrored
@@ -410,7 +443,6 @@ async function main() {
     const sig = (await r.json()) as { id: string; market: string };
     assert.equal(sig.market, 'Forex');
 
-    // market defaults to "Derived" when omitted
     const d = await req(
       '/signals',
       { method: 'POST', body: JSON.stringify({ pair: 'Default Market', direction: 'SELL', entry: 1, takeProfit: 0.9, stopLoss: 1.1, audience: 'VIP_DERIV' }) },
@@ -433,7 +465,6 @@ async function main() {
     assert.equal(created.status, 201);
     const course = (await created.json()) as { id: string; slug: string };
 
-    // A draft is hidden from the public list but visible to admins via ?all=true.
     const pub = (await (await req('/courses')).json()) as Array<{ id: string }>;
     assert.ok(!pub.some((c) => c.id === course.id), 'draft course should not appear publicly');
     const all = (await (await req('/courses?all=true', {}, adminToken)).json()) as Array<{ id: string }>;
@@ -441,7 +472,6 @@ async function main() {
     const sneaky = (await (await req('/courses?all=true')).json()) as Array<{ id: string }>;
     assert.ok(!sneaky.some((c) => c.id === course.id), 'non-admin must not see drafts');
 
-    // Add a lesson, then edit it.
     const lessonRes = await req(
       `/courses/${slug}/lessons`,
       { method: 'POST', body: JSON.stringify({ title: 'Lesson 1', videoUrl: 'https://example.com/v.mp4', durationMin: 5, order: 1, isFree: true }) },
@@ -457,7 +487,6 @@ async function main() {
     assert.equal(patched.status, 200);
     assert.equal(((await patched.json()) as { title: string }).title, 'Lesson 1 (edited)');
 
-    // Attach a resource, then remove it.
     const resRes = await req(
       '/admin/resources',
       { method: 'POST', body: JSON.stringify({ courseId: course.id, title: 'Cheat sheet', type: 'PDF', url: 'https://example.com/s.pdf', sizeKb: 120 }) },
@@ -468,7 +497,6 @@ async function main() {
     const resDel = await req(`/admin/resources/${resource.id}`, { method: 'DELETE' }, adminToken);
     assert.equal(resDel.status, 200);
 
-    // Publish, then delete the course.
     const publish = await req(`/courses/${slug}`, { method: 'PATCH', body: JSON.stringify({ published: true }) }, adminToken);
     assert.equal(publish.status, 200);
     const pub2 = (await (await req('/courses')).json()) as Array<{ id: string }>;
@@ -485,7 +513,6 @@ async function main() {
     let free = all.filter((c) => c.price <= 0).length;
     assert.ok(limit >= 1, 'a free-course limit is configured');
 
-    // Fill any remaining free slots.
     const created: string[] = [];
     while (free < limit) {
       const slug = `smoke-free-${Date.now()}-${free}`;
@@ -495,18 +522,15 @@ async function main() {
       free += 1;
     }
 
-    // One more free course is rejected at the cap.
     const over = await req('/courses', { method: 'POST', body: JSON.stringify({ slug: `smoke-over-${Date.now()}`, title: 'Over Limit', price: 0 }) }, adminToken);
     assert.equal(over.status, 409, 'creating beyond the free-course cap is rejected');
 
-    // Turning an existing paid course into a free one is blocked at the cap too.
     const paid = all.find((c) => c.price > 0);
     if (paid) {
       const toFree = await req(`/courses/${paid.slug}`, { method: 'PATCH', body: JSON.stringify({ price: 0 }) }, adminToken);
       assert.equal(toFree.status, 409, 'PATCH to free is blocked at the cap');
     }
 
-    // Cleanup so the seeded catalogue is untouched.
     for (const slug of created) await req(`/courses/${slug}`, { method: 'DELETE' }, adminToken);
   });
 
@@ -553,12 +577,9 @@ async function main() {
     const { refreshToken: second } = (await r1.json()) as { refreshToken: string };
     assert.ok(second && second !== first, 'a fresh refresh token is issued');
 
-    // First replay of the rotated-out token is tolerated once (concurrent
-    // tabs refresh at the same instant) — it must not mint a third token.
     const grace = await refresh(first);
     assert.equal(grace.status, 200);
 
-    // Anything beyond that single grace window kills the whole session.
     const reuse = await refresh(first);
     assert.equal(reuse.status, 401, 'token reuse past the grace window is revoked');
     const afterReuse = await refresh(second);

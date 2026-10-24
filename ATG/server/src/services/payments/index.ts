@@ -3,11 +3,6 @@ import { HttpError } from '../../middleware/error.js';
 import { notify, notifyMany } from '../notifications.service.js';
 import { nanoid } from 'nanoid';
 
-/**
- * Purchase fulfilment and refund workflows for courses, resources and
- * memberships. Paid checkouts remain unavailable until a payment provider is
- * configured; purchases are never marked PAID without verification.
- */
 
 async function auditPaymentEvent(entry: {
   action: string;
@@ -22,13 +17,6 @@ async function auditPaymentEvent(entry: {
   await prisma.paymentAuditLog.create({ data: entry });
 }
 
-/**
- * Grant entitlements after a verified payment or an admin verification action.
- *
- * Receipts are issued on the first PAID transition. For subscriptions the
- * existing expiry is EXTENDED (renewal) instead of being reset — there is
- * exactly one Subscription row per user, never duplicates.
- */
 export async function fulfilPurchase(
   purchaseId: string,
   verifiedById?: string,
@@ -51,9 +39,6 @@ export async function fulfilPurchase(
   }
 
   if (purchase.itemType === 'SUBSCRIPTION') {
-    // A verified subscription payment either RENEWS the existing membership
-    // (extend from the current expiry) or starts a new one. The tier defaults
-    // to the Weltrade VIP track; an admin can re-assign the room afterwards.
     const months = Math.max(1, opts?.months ?? 1);
     const membership = opts?.membership ?? 'VIP_WELTRADE';
     const planId = opts?.planId ?? 'VIP_MONTHLY';
@@ -85,7 +70,6 @@ export async function fulfilPurchase(
     });
   }
 
-  // One receipt per purchase, issued once (unique purchaseId guards retries).
   await prisma.receipt.createMany({
     data: [
       {
@@ -114,9 +98,6 @@ export async function fulfilPurchase(
   return updated;
 }
 
-/**
- * Revoke what a purchase granted when a refund is completed.
- */
 export async function revokePurchaseAccess(purchaseId: string) {
   const purchase = await prisma.purchase.findUnique({ where: { id: purchaseId } });
   if (!purchase) return;

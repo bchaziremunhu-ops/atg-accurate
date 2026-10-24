@@ -8,7 +8,8 @@ monthly VIP subscriptions, notifications and a secure admin dashboard.
 ```
 ATG/
 ├─ server/   Express + TypeScript + Prisma + MySQL + Socket.IO + Stripe/Web-Push
-└─ client/   React + TypeScript + Vite + Tailwind + React Query + lightweight-charts
+├─ client/   React + TypeScript + Vite + Tailwind + React Query + lightweight-charts
+└─ mobile/   Expo + React Native client for Android, iOS, and web
 ```
 
 > **Scope:** ATG Traders is a **signals & education** platform — **not** a trading or
@@ -66,6 +67,11 @@ with the case-sensitive `utf8mb4_0900_bin` collation, create a dedicated
 application user, and set `DATABASE_URL` in `server/.env` to that user's
 `mysql://` connection string. Do not use MySQL root credentials in the app.
 Keep `.env` private and URL-encode any special characters in the password.
+Before using `npm run db:setup` in development, set a unique
+`ADMIN_SEED_PASSWORD` of at least 16 characters. The demo seed replaces demo
+signals and resets the seeded administrator; it is disabled in production.
+Production deployments must create the initial administrator with
+`npm run admin:bootstrap --prefix server` against a new, empty database.
 
 ```bash
 # from the repository root
@@ -113,73 +119,32 @@ private networks.
 > `client/vite.config.ts` sets `server.host: true` + `strictPort: 5273`, and
 > `server/src/index.ts` prints the LAN address(es) on boot.
 
-### Native Android and iPhone builds (one shared system)
+### Android and iPhone app (Expo)
 
-The Android and iOS apps are Capacitor shells around this same React client. Both
-use the existing Express API, MySQL database, authentication, and user
-accounts; neither mobile build creates or migrates a server database. The
-on-device demo/offline adapter is opt-in only (`?offline=1`) and is not the
-shared-account mode.
-The in-app notification center uses the shared API on both platforms. Native
-push delivery is not wired in this project yet (it needs device-token
-registration plus APNs/FCM configuration); the Settings push opt-in remains
-web-only and is reported as unavailable in native builds.
-
-Set `VITE_API_URL` to the **HTTPS origin** where this existing server is
-deployed (for example, `https://api.example.com`, without `/api`). This value
-is public client configuration, not a secret. It is required for native
-builds; the app uses it for `/api` requests and Socket.IO. Production
-server CORS includes the standard Capacitor iOS and Android origins in addition
-to `CLIENT_ORIGIN` / `ALLOWED_ORIGINS`.
-
-From PowerShell, once in `ATG\client`:
+The React Native app in `mobile/` is the Android/iOS client and shares accounts
+and data with the web app through the same Express API and MySQL database. Set
+`EXPO_PUBLIC_API_URL` to the deployed HTTPS API origin, then run Expo:
 
 ```powershell
-$env:VITE_API_URL = "https://api.example.com"
-npm.cmd run build
-npx.cmd cap sync android
-Set-Location .\android
-.\gradlew.bat assembleDebug
+$env:EXPO_PUBLIC_API_URL = "https://api.example.com"
+Set-Location .\mobile
+npm install
+npm run start
 ```
 
-The debug APK is written to
-`client\android\app\build\outputs\apk\debug\app-debug.apk`. Install it on an
-Android device or emulator and sign in with an account from the shared server.
-The Android manifest blocks cleartext HTTP, as does iOS App Transport Security.
-For device testing, use an HTTPS API origin/tunnel that the phone can reach;
-`localhost` and a plain-HTTP LAN URL will not work.
+Tokens are stored with Expo SecureStore. See [the mobile client notes](./mobile/README.md)
+for supported features and [the deployment guide](./docs/DEPLOYMENT.md) for EAS
+builds. Preview builds must be tested on real devices against the deployed API
+before store submission.
 
-The iOS project is generated in `client\ios` in this checkout. On Windows,
-rebuild its bundled client after configuring the API origin:
+The separate React + Capacitor app in `client/` remains the web client and
+contains the full admin operations suite. Native push delivery is not wired in
+the Expo app yet.
 
-```powershell
-$env:VITE_API_URL = "https://api.example.com"
-npm.cmd run build
-npm.cmd run cap:sync:ios
-```
-
-Only run `npx.cmd cap add ios` once in a fresh checkout that does not yet have
-the `client\ios` directory.
-
-iOS archives, signing, simulator/device execution, and App Store upload require
-macOS with Xcode. Without a Mac, connect this repository to a cloud macOS
-builder such as Codemagic, set its working directory to `client`, and use
-`npm ci`, `npm run build`, and `npx cap sync ios` before the Xcode archive
-step. Configure Apple signing credentials in the builder's secure signing
-settings; do not commit certificates, provisioning profiles, or API secrets.
-An Apple Developer Program membership is generally required for TestFlight and
-App Store distribution. An iOS build must be signed and installed/tested on a
-real iPhone (and ideally a simulator) before claiming iPhone support; this
-Windows environment cannot verify that final iOS build.
-
-### Accounts (seeded)
-
-| Role   | Identifier             | Password |
-| ------ | ---------------------- | -------- |
-| Admin  | `blessed@atg.com` (email) | `1953`   |
-
-Traders register and sign in with **phone number + password** (no demo trader
-accounts are seeded — sign up through the app).
+Production has no default administrator credentials. Create its first admin
+only through the one-time process in the deployment guide. Local demo seeding
+requires a private `ADMIN_SEED_PASSWORD`; never use demo credentials in
+production.
 
 A branded splash screen is shown for **3 seconds** on first load.
 

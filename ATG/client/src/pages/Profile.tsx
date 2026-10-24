@@ -17,7 +17,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../store/auth';
-import { userApi } from '../lib/endpoints';
+import { courseApi, signalApi, subscriptionApi, userApi } from '../lib/endpoints';
 import { Card } from '../components/ui';
 import { useToast } from '../components/Toast';
 import type { Membership } from '../lib/types';
@@ -34,10 +34,15 @@ export default function Profile() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loggingOut, setLoggingOut] = useState(false);
-  const profile = useQuery({ queryKey: ['profile'], queryFn: userApi.profile });
+  const profile = useQuery({ queryKey: ['profile'], queryFn: userApi.profile, refetchOnMount: 'always' });
+  const courses = useQuery({ queryKey: ['profile-access-courses'], queryFn: () => courseApi.list(), refetchOnMount: 'always' });
+  const signalAccess = useQuery({ queryKey: ['rooms-access'], queryFn: signalApi.roomsAccess, refetchOnMount: 'always' });
+  const vipSubscription = useQuery({ queryKey: ['subscription'], queryFn: subscriptionApi.get, refetchOnMount: 'always' });
   const data = profile.data ?? user;
   const membership: Membership = data?.membership ?? (data?.isVip ? 'VIP_DERIV' : 'FREE');
   const isVipTier = membership === 'VIP_DERIV' || membership === 'VIP_WELTRADE';
+  const hasAllVipRooms = Boolean(signalAccess.data?.VIP_DERIV && signalAccess.data.VIP_WELTRADE);
+  const ownedCourses = (courses.data ?? []).filter((course) => !course.isFree && course.entitled);
 
   const menu = [
     { label: 'My Courses', to: '/education', icon: BookOpen },
@@ -88,7 +93,7 @@ export default function Profile() {
           <span className="mt-2 rounded-full bg-ink px-4 py-1 text-xs font-bold tracking-wide text-gold-100">{MEMBER_LABEL.PAID}</span>
         ) : (
           <Link to="/profile/subscription" className="mt-2 rounded-full bg-cream-200 px-4 py-1 text-xs font-bold text-ink-muted">
-            {MEMBER_LABEL.FREE} · Upgrade
+            {MEMBER_LABEL.FREE} · View VIP prices
           </Link>
         )}
 
@@ -108,7 +113,78 @@ export default function Profile() {
         </div>
       </Card>
 
-      {!isVipTier && (
+      <Card className="mt-4 space-y-3">
+        <div>
+          <h2 className="text-sm font-bold">Your current access</h2>
+          <p className="text-xs text-ink-muted">Confirmed purchases and access available to this account.</p>
+        </div>
+        {signalAccess.isError || vipSubscription.isError || courses.isError ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-cream-100 p-3">
+            <p className="text-xs text-ink-muted">Some access details couldn&apos;t be loaded.</p>
+            <button
+              className="text-xs font-semibold text-gold-700"
+              onClick={() => {
+                void signalAccess.refetch();
+                void vipSubscription.refetch();
+                void courses.refetch();
+              }}
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <AccessStatus
+                label="Paid signals"
+                status={signalAccess.isLoading ? 'Checking…' : signalAccess.data?.PAID ? 'Available' : 'Not included'}
+                active={Boolean(signalAccess.data?.PAID)}
+              />
+              <AccessStatus
+                label="Deriv VIP signals"
+                status={vipSubscription.isLoading
+                  ? 'Checking…'
+                  : roomStatus(vipSubscription.data?.roomAccess, 'VIP_DERIV', membership === 'VIP_DERIV' && Boolean(data?.isVip))}
+                active={Boolean(signalAccess.data?.VIP_DERIV)}
+              />
+              <AccessStatus
+                label="Weltrade VIP signals"
+                status={vipSubscription.isLoading
+                  ? 'Checking…'
+                  : roomStatus(vipSubscription.data?.roomAccess, 'VIP_WELTRADE', membership === 'VIP_WELTRADE' && Boolean(data?.isVip))}
+                active={Boolean(signalAccess.data?.VIP_WELTRADE)}
+              />
+            </div>
+            {courses.isLoading ? (
+              <p className="text-xs text-ink-muted">Loading course access…</p>
+            ) : ownedCourses.length ? (
+              <div className="border-t border-cream-200 pt-3">
+                <p className="mb-2 text-xs font-semibold text-ink-soft">Purchased courses · access confirmed</p>
+                <div className="flex flex-wrap gap-2">
+                  {ownedCourses.map((course) => (
+                    <Link
+                      key={course.id}
+                      to={`/education/${course.slug}`}
+                      className="rounded-full border border-gold-200 bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800"
+                    >
+                      {course.title}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="border-t border-cream-200 pt-3 text-xs text-ink-muted">
+                No purchased courses are active yet. Approved courses will appear here.
+              </p>
+            )}
+          </>
+        )}
+        <Link to="/profile/purchases" className="inline-flex text-xs font-semibold text-gold-700">
+          View purchase history and review status
+        </Link>
+      </Card>
+
+      {!hasAllVipRooms && (
         <Link
           to="/profile/subscription"
           className="mt-4 flex items-center gap-3 rounded-2xl border border-cream-200 bg-ink p-4 text-white transition-colors hover:bg-ink-soft"
@@ -117,9 +193,11 @@ export default function Profile() {
             <Crown className="h-5 w-5 text-gold-100" />
           </span>
           <span className="flex-1">
-            <span className="block text-sm font-extrabold">Join VIP membership</span>
+            <span className="block text-sm font-extrabold">{isVipTier ? 'Explore other VIP access' : 'Buy VIP signal access'}</span>
             <span className="block text-xs opacity-90">
-            Browse packages and request membership access.
+              {isVipTier
+                ? 'See plans for VIP rooms you do not currently access.'
+                : 'Compare plans, pay, and submit a receipt for review.'}
             </span>
           </span>
           <ChevronRight className="h-5 w-5" />
@@ -190,4 +268,29 @@ export default function Profile() {
       <div className="h-4" />
     </div>
   );
+}
+
+function AccessStatus({ label, status, active }: { label: string; status: string; active: boolean }) {
+  return (
+    <div className="rounded-xl border border-cream-200 bg-cream-50 p-3">
+      <p className="text-xs font-semibold">{label}</p>
+      <p className={`mt-1 text-xs font-bold ${active ? 'text-success' : 'text-ink-muted'}`}>{status}</p>
+    </div>
+  );
+}
+
+function roomStatus(
+  accessList: { accessLevel: string; startsAt: string; expiresAt: string }[] | undefined,
+  room: 'VIP_DERIV' | 'VIP_WELTRADE',
+  legacyActive: boolean,
+): string {
+  const now = Date.now();
+  const access = (accessList ?? [])
+    .filter((item) => item.accessLevel === room && new Date(item.expiresAt).getTime() > now)
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0];
+  if (access && new Date(access.startsAt).getTime() > now) {
+    return `Upcoming · starts ${new Date(access.startsAt).toLocaleDateString()}`;
+  }
+  if (access) return `Active · until ${new Date(access.expiresAt).toLocaleDateString()}`;
+  return legacyActive ? 'Active' : 'Not active';
 }

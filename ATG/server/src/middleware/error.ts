@@ -15,7 +15,6 @@ export function notFound(_req: Request, res: Response) {
   res.status(404).json({ error: 'Not found' });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ZodError) {
     return res.status(422).json({
@@ -27,7 +26,6 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return res.status(err.status).json({ error: err.message, code: err.code });
   }
   const message = err instanceof Error ? err.message : 'Internal server error';
-  // eslint-disable-next-line no-console
   console.error('[error]', err);
   res.status(500).json({ error: message });
 }

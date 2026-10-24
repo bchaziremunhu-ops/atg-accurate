@@ -46,8 +46,6 @@ export default function Register() {
     if (form.name.trim().length < 2) e.name = 'Enter your full legal name';
     if (!form.country) e.country = 'Select your country of residence';
     if (!form.nationality.trim()) e.nationality = 'Select your nationality';
-    // The phone must resolve to an international number; the server
-    // normalises it, but catch the obvious problems here for fast feedback.
     const digits = form.phone.replace(/\D/g, '');
     if (digits.length < 8 || digits.length > 15) e.phone = 'Enter a valid phone number with country code';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.dateOfBirth)) {
@@ -101,7 +99,7 @@ export default function Register() {
 
   return (
     <AuthShell>
-      <div className="card p-6">
+      <div className="card p-5 sm:p-6">
         <h1 className="text-2xl font-bold">Create your account</h1>
         <p className="muted mt-1">
           Zimbabwe and international traders welcome.

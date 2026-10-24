@@ -1,6 +1,9 @@
 .git
 **/node_modules
 **/dist
+backups/
+logs/*.log
+ATG-Traders-debug.apk
 client/android
 client/ios
 client/.gradle

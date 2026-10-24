@@ -1,11 +1,6 @@
 import { Link } from 'react-router-dom';
 import { AuthShell } from '../components/AppShell';
 
-/**
- * Terms & Conditions and Privacy Policy — short, plain-language versions that
- * cover what the registration flow actually collects. Linked from the signup
- * checkboxes.
- */
 export default function Legal() {
   return (
     <AuthShell>

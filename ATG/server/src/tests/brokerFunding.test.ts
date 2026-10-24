@@ -1,13 +1,3 @@
-/**
- * Broker funding (deposits / withdrawals) end-to-end tests. Run with: npm test
- *
- * The gateway credentials are injected BEFORE the app is imported (ESM static
- * imports would hoist past them), so this file uses dynamic imports only.
- *
- * Deriv is configured with credentials + a webhook secret but WITHOUT mapped
- * endpoint paths — exactly the state a real deployment starts in: inbound
- * callbacks can be verified, outbound transfers still run as manual processing.
- */
 process.env.NODE_ENV = 'test';
 process.env.DERIV_API_KEY = 'test-deriv-key';
 process.env.DERIV_API_SECRET = 'test-deriv-secret';
@@ -97,7 +87,6 @@ async function main() {
 
     const deriv = body.gateways.find((g) => g.broker === 'DERIV')!;
     const weltrade = body.gateways.find((g) => g.broker === 'WELTRADE')!;
-    // Credentials are present but no endpoint is mapped → gateway is NOT ready.
     assert.equal(deriv.configured, true, 'Deriv credentials detected');
     assert.equal(deriv.ready, false, 'gateway stays disabled until endpoints are mapped');
     assert.ok(deriv.reason, 'a disabled gateway must explain why');
@@ -174,7 +163,6 @@ async function main() {
     assert.equal(body.transaction.feePct, 10);
     assert.equal(body.transaction.feeAmount, 10, '10% of 100 = 10 fee recorded on the row');
 
-    // Changing the fee later must not rewrite history.
     const list = (await (await req('/broker/deposits')).json()) as Array<{ reference: string; feePct: number; feeAmount: number }>;
     const snapshot = list.find((t) => t.feeAmount === 10)!;
     assert.equal(snapshot.feePct, 10, 'older rows keep the fee they were created with');
@@ -489,7 +477,6 @@ async function main() {
     assert.equal(weltrade.balance, 1000, 'each broker balance remains independent');
   });
 
-  // ---- Provider webhooks -------------------------------------------------
 
   async function sendWebhook(body: string, signature?: string) {
     return fetch(`${base}/broker/webhook/DERIV`, {

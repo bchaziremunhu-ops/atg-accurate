@@ -6,7 +6,6 @@ import { initRealtime, setIo } from './realtime/socket.js';
 import { startSubscriptionJobs } from './jobs/subscriptionExpiry.js';
 import { prisma } from './lib/prisma.js';
 
-/** All non-internal IPv4 addresses so phones/tablets on the same Wi-Fi can connect. */
 function lanAddresses(): string[] {
   const out: string[] = [];
   for (const list of Object.values(os.networkInterfaces())) {
@@ -17,7 +16,6 @@ function lanAddresses(): string[] {
   return out;
 }
 
-/** Port the web client is served on, taken from PUBLIC_URL (default 5273). */
 function clientPort(): number {
   try {
     return Number(new URL(env.publicUrl).port) || 5273;
@@ -27,7 +25,6 @@ function clientPort(): number {
 }
 
 async function main() {
-  // Hard-fails on default/weak JWT secrets, missing https hints, etc.
   assertProductionEnv();
 
   const app = createApp();
@@ -42,7 +39,6 @@ async function main() {
   server.listen(env.port, env.host, () => {
     console.log(`\n  ATG Traders API  →  http://localhost:${env.port}/api`);
     if (servingClient) {
-      // Single origin in production: the SPA is served by this same server.
       console.log(`  ATG Traders web  →  http://localhost:${env.port}`);
       console.log(`  Public URL       →  ${env.publicUrl}`);
     } else {
@@ -59,8 +55,6 @@ async function main() {
     );
   });
 
-  // A crashed worker that keeps running is worse than a clean restart — log
-  // loudly and let pm2/Windows service bring up a fresh process.
   process.on('unhandledRejection', (reason) => {
     console.error('[fatal] unhandledRejection:', reason);
   });

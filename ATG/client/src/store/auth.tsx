@@ -12,6 +12,7 @@ interface AuthContextValue {
   register: (data: RegisterInput) => Promise<User>;
   logout: () => Promise<{ serverRevoked: boolean; error?: string }>;
   refreshUser: () => Promise<void>;
+  updateUser: (updates: Partial<User> & Pick<User, 'id'>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -54,6 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (refreshInFlight.current === request) refreshInFlight.current = null;
     });
     return request;
+  }, []);
+
+  const updateUser = useCallback((updates: Partial<User> & Pick<User, 'id'>) => {
+    setUser((current) => (current?.id === updates.id ? { ...current, ...updates } : current));
   }, []);
 
   useEffect(() => {
@@ -113,8 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const value = useMemo(
-    () => ({ user, loading, authError, login, register, logout, refreshUser }),
-    [user, loading, authError, login, register, logout, refreshUser],
+    () => ({ user, loading, authError, login, register, logout, refreshUser, updateUser }),
+    [user, loading, authError, login, register, logout, refreshUser, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
