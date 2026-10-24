@@ -1,4 +1,4 @@
-import { prisma } from '../../lib/prisma';
+import { prisma } from '../../lib/prisma.js';
 import { HttpError } from '../../middleware/error.js';
 
 export interface SubscriptionPlan {
