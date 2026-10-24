@@ -74,20 +74,18 @@ verified, configure the app from `ATG\mobile`:
 ```powershell
 Set-Location .\ATG\mobile
 npx.cmd eas-cli@latest login
-npx.cmd eas-cli@latest build:configure
 ```
 
-After configuration creates the Expo project, set `EXPO_PUBLIC_API_URL` to the
-same HTTPS origin in that project's environment settings for preview and
-production. It is public client configuration, not a secret. Then build:
+The Expo project is linked in `app.json`, and the preview and production
+profiles in `eas.json` set `EXPO_PUBLIC_API_URL` to the Railway HTTPS origin.
+Update those profile values if the API moves to a custom domain. Then build:
 
 ```powershell
 npx.cmd eas-cli@latest build --platform all --profile preview
 ```
 
 The `mobile/eas.json` preview profile creates an Android APK for internal
-testing and an iOS internal build. `build:configure` links this app to the Expo
-account and adds its project ID to the local app configuration. Use the
+testing and an iOS internal build. Use the
 production profile for store artifacts after testing and completing the
 Android/Apple store account and signing setup. Install preview builds on
 devices and verify that multiple phones sign into the same accounts, see the
