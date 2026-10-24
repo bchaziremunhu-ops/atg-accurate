@@ -3,7 +3,7 @@ builder = "NIXPACKS"
 buildCommand = "cd server && npm ci && npm run prisma:generate && npm run build && cd ../client && npm ci && npm run build"
 
 [deploy]
-preDeployCommand = ["sh", "-c", "cd server && npm run prisma:push"]
+preDeployCommand = "cd server && npm run prisma:push"
 startCommand = "cd server && npm run start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
