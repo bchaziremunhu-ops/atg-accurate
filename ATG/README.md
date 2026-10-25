@@ -70,6 +70,9 @@ database and dedicated application role, then set `DATABASE_URL` in
 URL-encode any special characters in the password. Switching the app does not
 copy existing MySQL data; back up and migrate existing records separately
 before directing production traffic to PostgreSQL.
+For hosted databases that suspend while idle, include `connect_timeout=30` in
+the `DATABASE_URL` query parameters so Prisma allows time for the database to
+wake before failing a request.
 Before using `npm run db:setup` in development, set a unique
 `ADMIN_SEED_PASSWORD` of at least 16 characters. The demo seed replaces demo
 signals and resets the seeded administrator; it is disabled in production.
