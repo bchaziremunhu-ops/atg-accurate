@@ -3,7 +3,7 @@ nixPkgs = ["openssl"]
 
 [build]
 builder = "NIXPACKS"
-buildCommand = "cd server && npm ci --foreground-scripts && npm run prisma:generate && npm run build && cd ../client && npm ci --foreground-scripts && npm run build"
+buildCommand = "cd server && npm ci --include=dev --foreground-scripts && npm run prisma:generate && npm run build && cd ../client && npm ci --include=dev --foreground-scripts && npm run build"
 
 [deploy]
 preDeployCommand = "cd server && npm run prisma:push"
