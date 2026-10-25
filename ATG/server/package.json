@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "ATG Traders - trading education & signals backend (Express + Prisma + MySQL)",
+  "description": "ATG Traders - trading education & signals backend (Express + Prisma + PostgreSQL)",
   "engines": {
     "node": "22.x"
   },

@@ -7,7 +7,7 @@ monthly VIP subscriptions, notifications and a secure admin dashboard.
 
 ```
 ATG/
-├─ server/   Express + TypeScript + Prisma + MySQL + Socket.IO + Stripe/Web-Push
+├─ server/   Express + TypeScript + Prisma + PostgreSQL + Socket.IO + Stripe/Web-Push
 ├─ client/   React + TypeScript + Vite + Tailwind + React Query + lightweight-charts
 └─ mobile/   Expo + React Native client for Android, iOS, and web
 ```
@@ -62,16 +62,17 @@ Key rules (all enforced on the **backend**):
 
 ## 1. Quick start
 
-ATG uses MySQL 8.0+ as its only application database. Create an empty database
-with the case-sensitive `utf8mb4_0900_bin` collation, create a dedicated
-application user, and set `DATABASE_URL` in `server/.env` to that user's
-`mysql://` connection string. Do not use MySQL root credentials in the app.
-Keep `.env` private and URL-encode any special characters in the password.
+ATG uses PostgreSQL 14+ as its application database. PostgreSQL manages its own
+database files in its configured data directory; the application connects to
+the server using `DATABASE_URL`, not by opening a database file. Create a
+database and dedicated application role, then set `DATABASE_URL` in
+`server/.env` to a `postgresql://` connection string. Keep `.env` private and
+URL-encode any special characters in the password. Switching the app does not
+copy existing MySQL data; back up and migrate existing records separately
+before directing production traffic to PostgreSQL.
 Before using `npm run db:setup` in development, set a unique
 `ADMIN_SEED_PASSWORD` of at least 16 characters. The demo seed replaces demo
 signals and resets the seeded administrator; it is disabled in production.
-Production deployments must create the initial administrator with
-`npm run admin:bootstrap --prefix server` against a new, empty database.
 
 ```bash
 # from the repository root
@@ -122,7 +123,7 @@ private networks.
 ### Android and iPhone app (Expo)
 
 The React Native app in `mobile/` is the Android/iOS client and shares accounts
-and data with the web app through the same Express API and MySQL database. Set
+and data with the web app through the same Express API and PostgreSQL database. Set
 `EXPO_PUBLIC_API_URL` to the deployed HTTPS API origin, then run Expo:
 
 ```powershell
@@ -133,18 +134,15 @@ npm run start
 ```
 
 Tokens are stored with Expo SecureStore. See [the mobile client notes](./mobile/README.md)
-for supported features and [the deployment guide](./docs/DEPLOYMENT.md) for EAS
-builds. Preview builds must be tested on real devices against the deployed API
-before store submission.
+for supported features. Preview builds must be tested on real devices against the
+app's API before release.
 
 The separate React + Capacitor app in `client/` remains the web client and
 contains the full admin operations suite. Native push delivery is not wired in
 the Expo app yet.
 
-Production has no default administrator credentials. Create its first admin
-only through the one-time process in the deployment guide. Local demo seeding
-requires a private `ADMIN_SEED_PASSWORD`; never use demo credentials in
-production.
+Local demo seeding requires a private `ADMIN_SEED_PASSWORD`; never use demo
+credentials in production.
 
 A branded splash screen is shown for **3 seconds** on first load.
 
@@ -181,14 +179,27 @@ so the API never has to be exposed to other devices directly.
 | Deposits & withdrawals | ✅ | `wallet.routes.ts` — pending deposits, fund-holding withdrawals, admin settlement; methods: Local Bank Transfer, EcoCash, OneMoney, InnBucks, CashSmile |
 | **Broker deposit & withdrawal management (Deriv / Weltrade)** | ✅ | `server/src/routes/brokerFunding.routes.ts`, `services/brokerFunding` — separate auditable ledger, review-before-approve, evidence-required completion, signed webhooks; UI: `/broker-funds` + Admin → **Broker Funds** — see [`docs/BROKER_FUNDING.md`](docs/BROKER_FUNDING.md) |
 | **No trade execution / broker accounts** | ✅ | No order/trading endpoints exist; broker API keys are **not** required for manual signals |
-| Real database | ✅ | Prisma + MySQL 8.0+ (the only application database) |
+| Real database | ✅ | Prisma + PostgreSQL 14+ (the only application database) |
 | Secure auth + RBAC | ✅ | bcrypt, JWT access/refresh, `role` USER/ADMIN, `membership` tiers, `requireAccess` / `requireVip` / `requireRole` |
 | Validation, errors, loading states | ✅ | Zod on every write, error middleware, skeletons/spinners/toasts |
 | Tests | ✅ | `server/src/tests/smoke.test.ts` + `brokerFunding.test.ts` (`npm test`, **58 checks**) |
 
 ---
 
-## 3. Architecture
+## 3. Launch readiness (Stage 5)
+
+The project includes the operational and compliance materials required for app-store review before public release:
+
+- Store checklist: [docs/STORE_READINESS.md](docs/STORE_READINESS.md)
+- Privacy Policy: [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md)
+- Terms of Service: [docs/TERMS_OF_SERVICE.md](docs/TERMS_OF_SERVICE.md)
+- Production launch guide: [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md)
+- Production env validation: [server/scripts/check-production-env.ts](server/scripts/check-production-env.ts)
+- App build + signing config: [mobile/app.json](mobile/app.json), [mobile/eas.json](mobile/eas.json)
+
+These assets cover store metadata, legal transparency, production deployment readiness, user data handling, and release gating before publishing to Google Play and the Apple App Store.
+
+## 4. Architecture
 
 - **Layers:** `routes` → `services` → `lib/prisma`. Zod validates every write body.
 - **Auth:** bcrypt(12) password hashing; short-lived **access JWT** + long-lived **refresh JWT**;
@@ -198,6 +209,7 @@ so the API never has to be exposed to other devices directly.
   `canAccess`, `allowedLevels`, `isAdmin`, `hasVerifiedPurchase`.
 - **Realtime:** Socket.IO with JWT handshake — membership is re-resolved from the DB on every
   connect; `group:join` / `group:message` enforce room access **and** the chat-open flag.
+  This is the app's real-time layer; it is not a Firebase Realtime Database.
 - **Jobs:** `node-cron` daily subscription-lifecycle pass (warn + expire + downgrade to `FREE`).
 - **Payments:** provider-agnostic. **Stripe Checkout** when keys are present; otherwise a
   **manual** provider that records a `PENDING` purchase with payment instructions and waits
@@ -268,11 +280,11 @@ is ever auto-settled. Add the keys in `server/.env` to switch each capability to
 | --- | --- | --- | --- |
 | **Stripe** (card payments, subscriptions) | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_VIP_MONTHLY` | https://dashboard.stripe.com/test/apikeys | Without keys → **manual** pending purchases. Live webhook: `POST /api/payments/webhook` (signature-verified). |
 | **Web Push** | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | `npx web-push generate-vapid-keys` | Enables browser push; without keys only the in-app centre is used |
-| **Native push delivery** | Not wired | APNs + Firebase Cloud Messaging | Requires native device-token registration and server delivery code before it can be enabled |
+| **Native push delivery** | Not wired | APNs + Firebase Cloud Messaging (optional push transport only) | Requires native device-token registration and server delivery code before it can be enabled; Firebase is not the app database and not the real-time layer |
 | **Deposits / withdrawals provider** | `PAYMENT_PROVIDER`, `PAYMENT_API_KEY`, `PAYMENT_API_SECRET` | Your contracted PSP aggregator (EcoCash / OneMoney / InnBucks / CashSmile / bank) | **Manual** by default — nothing auto-settles. Register a real adapter in `services/payments/providers.ts`. **Regulated activity — requires licensing + KYC/AML** |
 | **Broker funding gateways** (Deriv / Weltrade deposits & withdrawals) | `BROKER_FUNDING_PROVIDER`, `DERIV_*`, `WELTRADE_*` (key/secret/base URL/webhook secret/funding paths/auth header), `BROKER_*` limits | Your Deriv & Weltrade API docs for the account type in use | **Manual by default.** A gateway goes live only when creds + webhook secret + endpoint paths are all set; otherwise requests stay admin-processed. Signed callbacks: `POST /api/broker/webhook/:broker`. Full reference: [`docs/BROKER_FUNDING.md`](docs/BROKER_FUNDING.md) |
 | **Live market data** (optional charts) | `MARKET_DATA_PROVIDER`, `MARKET_DATA_URL`, `MARKET_DATA_API_KEY` | Any OHLC REST feed (your broker's market data, TwelveData, Polygon…) | **Disabled by default.** Until configured, `/api/signals/:id/chart` returns `configured:false` and the UI shows *"Live chart not connected"* — candles are never fabricated |
-| **Production database** | `DATABASE_URL` | MySQL 8.0+ managed database | Configure a MySQL `mysql://` URL; MySQL is the only supported application database |
+| **Production database** | `DATABASE_URL` | PostgreSQL 14+ managed database | Configure a PostgreSQL `postgresql://` URL; PostgreSQL is the only supported application database |
 | **CDN for media** | — | S3 / Cloudflare R2 / Mux | Admins attach real lesson video/resource URLs; seeds ship with **no** fake media |
 | **Email (verify/reset)** | not wired | SendGrid/Resend | Add a mailer if you want email verification |
 
@@ -341,7 +353,7 @@ sidebar on tablets/desktop. Fully responsive (Android, iPhone, tablet, PC).
 
 ## 8. Going to production
 
-For the Railway + MySQL shared cloud deployment and Android/iPhone connection
+For the Railway + PostgreSQL shared cloud deployment and Android/iPhone connection
 steps, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 The server is built for a **single origin in production**: it serves the compiled
@@ -381,7 +393,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"   # twi
 | `PUBLIC_URL` | ✅ | canonical https URL (webhooks + notification links) |
 | `TRUST_PROXY` | if behind nginx/cloudflare | hop count so rate limits see real client IPs |
 | `RATE_LIMIT_*` / `AUTH_RATE_LIMIT_MAX` | optional | global API bucket (300/15 min) + auth bucket (20/15 min) |
-| `DATABASE_URL` | ✅ | MySQL 8.0+ connection string; all application environments use MySQL |
+| `DATABASE_URL` | ✅ | PostgreSQL 14+ connection string; all application environments use PostgreSQL |
 
 ### 8.3 Refresh-token security (built in)
 
@@ -416,7 +428,7 @@ broker webhooks.
 
 ### 8.5 Before you take real money
 
-1. MySQL 8.0+ with automated, restorable backups. Review schema changes before
+1. PostgreSQL 14+ with automated, restorable backups. Review schema changes before
    applying `prisma db push` to an existing database.
 2. Stripe (or a PSP) live keys; VAPID keys for Web Push; SMTP for email flows.
 3. Broker gateway credentials — see [`docs/BROKER_FUNDING.md`](docs/BROKER_FUNDING.md).

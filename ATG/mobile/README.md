@@ -44,6 +44,18 @@ the platform bundles. A signed Android package requires Android build tooling
 and signing configuration; iOS signing requires macOS, Xcode, and Apple
 credentials.
 
+## Store review and legal readiness
+
+The repository includes the review-focused documents needed before public store
+release:
+
+- [../docs/STORE_READINESS.md](../docs/STORE_READINESS.md)
+- [../docs/PRIVACY_POLICY.md](../docs/PRIVACY_POLICY.md)
+- [../docs/TERMS_OF_SERVICE.md](../docs/TERMS_OF_SERVICE.md)
+
+These cover app-store submission, data-safety requirements, legal transparency,
+and the pre-release checklist for Google Play and Apple App Store approval.
+
 ## Remaining parity notes
 
 The persisted catalog is not a full offline/demo implementation. Some

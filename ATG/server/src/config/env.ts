@@ -104,8 +104,8 @@ export const env = {
   maxFreeCourses: Number(optional('MAX_FREE_COURSES', '5')),
 };
 
-if (!env.databaseUrl || !/^mysql:\/\//i.test(env.databaseUrl)) {
-  throw new Error('DATABASE_URL must be set to a MySQL connection string');
+if (!env.databaseUrl || !/^postgres(?:ql)?:\/\//i.test(env.databaseUrl)) {
+  throw new Error('DATABASE_URL must be set to a PostgreSQL connection string');
 }
 
 export const integrations = {

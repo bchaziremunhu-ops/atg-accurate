@@ -19,25 +19,25 @@ Course approval creates a paid purchase, receipt, and enrollment for that course
 
 ## Database and private proof storage
 
-The application uses MySQL. The additive Prisma schema update is applied with the `prisma:push` npm script from `server`. Back up the database before applying schema changes. Do not use destructive flags or point this workflow at PostgreSQL.
+The application uses PostgreSQL. The Prisma schema update is applied with the `prisma:push` npm script from `server`. Back up the database before applying schema changes. Do not use destructive flags.
 
 Proof images are written outside public static content. The default is `server/private/purchase-proofs`; set `PURCHASE_PROOF_DIR` to a durable private directory in production and ensure only the application process can read it. The authenticated proof endpoint permits only the request owner and admins.
 
-The pre-change source and MySQL data exports are in `backups/`. Keep those backups protected because they may contain customer data.
+Keep database exports protected because they may contain customer data.
 
 ## Local validation
 
-Configure `server/.env` with the MySQL URL and auth secrets, apply the schema with `npm run prisma:push` from `server`, then start the API and client in separate terminals with `npm run dev` from `server` and `client`. The defaults are API port `4000` and client port `5273`.
+Configure `server/.env` with the PostgreSQL URL and auth secrets, apply the schema with `npm run prisma:push` from `server`, then start the API and client in separate terminals with `npm run dev` from `server` and `client`. The defaults are API port `4000` and client port `5273`. Applying the schema does not migrate records from an existing MySQL database.
 
-For validation, run `npm run build` from both `server` and `client`. Database test suites create temporary records and therefore refuse to run unless `DATABASE_URL` names an isolated MySQL database ending in `_test` (for example, `atg_mysql_test`). Set the test URL in the shell before running the suites:
+For validation, run `npm run build` from both `server` and `client`. Database test suites create temporary records and therefore refuse to run unless `DATABASE_URL` names an isolated PostgreSQL database ending in `_test` (for example, `atg_test`). Set the test URL in the shell before running the suites:
 
 ```powershell
-$env:DATABASE_URL = "mysql://<user>:<password>@127.0.0.1:3306/atg_mysql_test"
+$env:DATABASE_URL = "postgresql://<user>:<password>@127.0.0.1:5432/atg_test?schema=public"
 npm test
 $env:RUN_MANUAL_PURCHASE_TESTS = '1'
 npm run test:manual-purchases
 ```
 
-The manual purchase integration checks create temporary uniquely named users, course/package requests, and VIP rooms, then clean up those fixtures and uploaded proof files. Never point these suites at the live `atg_mysql` database.
+The manual purchase integration checks create temporary uniquely named users, course/package requests, and VIP rooms, then clean up those fixtures and uploaded proof files. Never point these suites at the live database.
 
 The existing daily subscription scheduler also processes manual room-entitlement reminders. Legacy Paynow-independent subscriptions continue using the existing scheduler behavior.

@@ -8,7 +8,7 @@ export function assertIsolatedTestDatabase(): void {
     throw new Error('Database tests require a valid DATABASE_URL.');
   }
   if (!databaseName.toLowerCase().endsWith('_test')) {
-    throw new Error('Refusing to run database tests unless DATABASE_URL names an isolated database ending in _test.');
+    throw new Error('Refusing to run database tests unless DATABASE_URL names an isolated PostgreSQL database ending in _test.');
   }
 }
 
